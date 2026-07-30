@@ -1,0 +1,16 @@
+# 로컬 작업 원본. 배포되는 것은 이 파일을 복사한 index.html 이다.
+#   수정 후:  cp 일빵-런처-확정안.html index.html
+일빵-런처-확정안.html
+
+# 단계별 백업 (각 1~13MB)
+*.backup-*.html
+
+# 패치 스크립트와 번들 추출물
+tmp/
+
+# 검증용 스크린샷 (사이트 이미지는 .webp 라 영향 없음)
+*.jpeg
+.playwright-mcp/
+
+# 참조되지 않는 구버전 버튼 이미지
+assets/clickable-v1/

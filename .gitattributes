@@ -1,0 +1,8 @@
+# index.html 은 base64 자산과 인라인 JSON 이 박힌 생성 번들이다.
+# 줄바꿈을 건드리지 않고 바이트 그대로 보존한다.
+index.html -text
+
+*.webp binary
+
+# 그 외 텍스트는 저장소에서 LF 로 통일
+* text=auto eol=lf
