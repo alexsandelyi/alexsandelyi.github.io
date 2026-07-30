@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>동네 축구 — 일빵</title>
+<title>동네 축구 11v11 — 일빵</title>
 <style>
   :root {
     /* 런처(청자 팔레트)에서 그대로 가져온 색 */
     --bg-canvas:#152528; --bg-surface:#1D3236; --bg-raised:#264046;
     --text-strong:#F2F7F4; --text-body:#D5E4E1; --text-muted:#8FA8A7;
     --accent:#F58A5E; --accent-hover:#FFA079; --accent-fg:#23140C;
-    --border-subtle:#2B474C; --gold:#F2CE7A; --chip-off:#37585F;
+    --border-subtle:#2B474C; --gold:#F2CE7A;
     --font: "Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -18,84 +18,72 @@
   body {
     background:var(--bg-canvas); color:var(--text-body); font-family:var(--font);
     display:flex; flex-direction:column;
-    /* 홈바·노치 회피 */
     padding:env(safe-area-inset-top) env(safe-area-inset-right)
             env(safe-area-inset-bottom) env(safe-area-inset-left);
     -webkit-user-select:none; user-select:none;
-    -webkit-tap-highlight-color:transparent;
-    touch-action:none;
+    -webkit-tap-highlight-color:transparent; touch-action:none;
   }
-
-  /* ── 상단 바 ── */
   header {
-    flex:0 0 auto; display:flex; align-items:center; gap:14px;
-    padding:10px 14px; border-bottom:1px solid var(--border-subtle);
+    flex:0 0 auto; display:flex; align-items:center; gap:12px;
+    padding:9px 12px; border-bottom:1px solid var(--border-subtle);
   }
   .back {
-    color:var(--text-muted); text-decoration:none; font-size:14px;
-    padding:6px 10px; border-radius:8px; border:1px solid var(--border-subtle);
-    flex:0 0 auto;
+    color:var(--text-muted); text-decoration:none; font-size:13px;
+    padding:6px 10px; border-radius:8px; border:1px solid var(--border-subtle); flex:0 0 auto;
   }
-  .back:active { background:var(--bg-surface); }
-  .scoreboard {
-    flex:1; display:flex; align-items:center; justify-content:center; gap:12px;
-    font-variant-numeric:tabular-nums;
-  }
-  .team { font-size:13px; color:var(--text-muted); white-space:nowrap; }
+  .scoreboard { flex:1; display:flex; align-items:center; justify-content:center; gap:10px; }
+  .team { font-size:12px; color:var(--text-muted); white-space:nowrap; }
   .team.home { color:var(--accent); }
   .team.away { color:var(--gold); }
-  .score { font-size:26px; font-weight:700; color:var(--text-strong); letter-spacing:1px; }
-  .clock {
-    flex:0 0 auto; font-size:15px; color:var(--text-strong);
-    font-variant-numeric:tabular-nums; min-width:52px; text-align:right;
-  }
+  .score { font-size:24px; font-weight:700; color:var(--text-strong);
+           font-variant-numeric:tabular-nums; letter-spacing:1px; }
+  .clock { flex:0 0 auto; font-size:14px; color:var(--text-strong);
+           font-variant-numeric:tabular-nums; min-width:48px; text-align:right; }
 
-  /* ── 경기장 ── */
   #stage { flex:1; position:relative; min-height:0; }
   canvas { display:block; width:100%; height:100%; }
 
-  /* ── 오버레이(안내·결과) ── */
   #overlay {
     position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; gap:16px; text-align:center;
-    background:rgba(21,37,40,.86); padding:24px;
+    align-items:center; justify-content:center; gap:14px; text-align:center;
+    background:rgba(21,37,40,.88); padding:22px; overflow:auto;
   }
   #overlay.hidden { display:none; }
-  #overlay h1 { font-size:clamp(24px,6vw,40px); color:var(--text-strong); font-weight:700; }
-  #overlay p { font-size:14px; color:var(--text-muted); line-height:1.7; max-width:34em; }
-  #overlay .keys { color:var(--text-body); }
-  .btnrow { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  #overlay h1 { font-size:clamp(22px,5.5vw,38px); color:var(--text-strong); font-weight:700; }
+  #overlay p { font-size:13.5px; color:var(--text-muted); line-height:1.75; max-width:36em; }
+  .keys { color:var(--text-body); font-weight:700; }
+  .btnrow { display:flex; gap:9px; flex-wrap:wrap; justify-content:center; }
   button {
     font-family:var(--font); font-size:15px; font-weight:700; cursor:pointer;
-    padding:12px 22px; border-radius:10px; border:1px solid var(--accent);
+    padding:12px 20px; border-radius:10px; border:1px solid var(--accent);
     background:var(--accent); color:var(--accent-fg);
   }
   button.ghost { background:transparent; color:var(--text-body); border-color:var(--border-subtle); }
   button:active { transform:translateY(1px); }
-  #levelRow button { padding:8px 18px; font-size:14px; }
+  #levelRow button { padding:8px 16px; font-size:14px; }
   #levelRow button.sel { background:var(--bg-raised); color:var(--gold); border-color:var(--gold); }
-  .best { font-size:13px; color:var(--gold); }
+  .best { font-size:12.5px; color:var(--gold); }
 
-  /* ── 모바일 조작(조이스틱 + 슛) ── */
+  /* 모바일 조작 */
   #touch { position:absolute; inset:0; display:none; }
   #touch.on { display:block; }
   #stick {
     position:absolute; left:0; top:0; width:132px; height:132px; margin:-66px 0 0 -66px;
-    border-radius:50%; border:2px solid var(--border-subtle); background:rgba(38,64,70,.5);
+    border-radius:50%; border:2px solid var(--border-subtle); background:rgba(38,64,70,.45);
     display:none; pointer-events:none;
   }
   #stick.on { display:block; }
-  #knob {
-    position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px;
-    border-radius:50%; background:var(--accent); opacity:.9;
+  #knob { position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px;
+          border-radius:50%; background:var(--accent); opacity:.9; }
+  .actbtn {
+    position:absolute; border-radius:50%; pointer-events:auto; font-weight:700;
+    border:2px solid var(--accent); background:rgba(245,138,94,.2); color:var(--accent);
+    padding:0; white-space:nowrap;      /* 기본 padding 때문에 '패스'가 두 줄로 깨졌다 */
   }
-  #shoot {
-    position:absolute; right:22px; bottom:22px; width:88px; height:88px; border-radius:50%;
-    border:2px solid var(--accent); background:rgba(245,138,94,.22); color:var(--accent);
-    font-size:15px; font-weight:700; pointer-events:auto;
-  }
-  #shoot:active { background:rgba(245,138,94,.45); }
-  .hint { position:absolute; left:0; right:0; bottom:8px; text-align:center; font-size:11px; color:var(--text-muted); }
+  #shoot { right:18px; bottom:18px; width:82px; height:82px; font-size:15px; }
+  #pass  { right:106px; bottom:40px; width:66px; height:66px; font-size:13px;
+           border-color:var(--gold); background:rgba(242,206,122,.18); color:var(--gold); }
+  .actbtn:active { filter:brightness(1.5); }
 </style>
 </head>
 <body>
@@ -103,11 +91,11 @@
 <header>
   <a class="back" href="../../">← 목록</a>
   <div class="scoreboard">
-    <span class="team home" id="nameHome">나</span>
+    <span class="team home" id="nameHome">우리</span>
     <span class="score"><span id="sHome">0</span> : <span id="sAway">0</span></span>
     <span class="team away" id="nameAway">AI</span>
   </div>
-  <div class="clock" id="clock">2:00</div>
+  <div class="clock" id="clock">3:00</div>
 </header>
 
 <div id="stage">
@@ -115,7 +103,8 @@
 
   <div id="touch">
     <div id="stick"><div id="knob"></div></div>
-    <button id="shoot">슛</button>
+    <button id="pass" class="actbtn">패스</button>
+    <button id="shoot" class="actbtn">슛</button>
   </div>
 
   <div id="overlay">
@@ -137,105 +126,146 @@
 <script>
 'use strict';
 
-// ─────────────────────────────────────────────────────────────
-// 동네 축구 — 톱다운 1v1
+// ═══════════════════════════════════════════════════════════════════
+// 동네 축구 11v11 — 톱다운, 카메라 추적
 //
-// 좌표계: 경기장은 항상 논리 단위 FW×FH 로 계산하고, 그리기 직전에만
-// 화면 크기에 맞춰 스케일한다. 이렇게 하면 창 크기나 기기 화면비가
-// 달라도 물리·AI 동작이 100% 똑같이 유지된다(해상도 의존 버그 방지).
-// ─────────────────────────────────────────────────────────────
+// 좌표계: 경기장은 항상 논리 단위(1m = 20단위)로 계산하고, 화면 크기와
+// 회전은 그리기·입력 변환 단계에서만 반영한다. 창 크기나 기기 화면비가
+// 경기 결과를 바꾸지 않게 하려는 것이다.
+//
+// 실제 규격(105m x 68m)을 그대로 옮겼다. 페널티박스·골에어리어·센터서클·
+// 페널티마크 치수도 실측값이다. 골문만은 예외로 넓혔다 — 실제 7.32m
+// (=146단위)로 두면 골키퍼가 있는 상태에서 득점이 거의 불가능하다.
+// ═══════════════════════════════════════════════════════════════════
 
-const FW = 1000, FH = 620;          // 경기장 논리 크기
-// 골문 높이. 처음 190 으로 뒀더니 2분에 4~6골씩 터져서 실력보다 공 튕김
-// 운이 승패를 갈랐고(난이도를 바꿔도 승률이 33~40% 에 몰렸다), 110 까지
-// 좁히면 골이 안 나 난이도 순서가 뒤집혔다. 150 에서 승률이 60/40/30 으로
-// 단조 증가하고 득점도 2.7~5 골로 축구다워진다.
-const GOAL_H = 150;
-const WALL = 14;                     // 라인 두께(시각용)
+const M = 20;                        // 1미터 = 20 논리단위
+const FW = 105 * M, FH = 68 * M;     // 2100 x 1360
+// 골문만 실측(7.32m = 146)에서 확대했다. 골키퍼가 있는 상태에서 146 으로
+// 두면 득점이 거의 안 난다. 300 에서 보통 난이도 평균 스코어가 2~3 : 2 로
+// 실제 축구(경기당 2.7골)에 가장 가깝게 나왔다.
+const GOAL_H = 300;
+const PA_D = 16.5 * M, PA_W = 40.3 * M;   // 페널티 에어리어
+const GA_D = 5.5 * M,  GA_W = 18.32 * M;  // 골 에어리어
+const CIRCLE_R = 9.15 * M;
+const PEN_SPOT = 11 * M;
+
 const R_PLAYER = 26, R_BALL = 13;
+// 줌은 고정하지 않는다. 화면이 크면 경기장 전체를 보여주고, 작을 때만
+// 선수가 읽히는 최소 크기를 지키며 카메라가 공을 따라간다.
+// (고정 줌으로 두면 데스크톱에서도 경기장의 60% 만 보여 답답하고,
+//  반대로 전체를 늘 담으면 폰에서 선수가 지름 15px 로 뭉개진다)
+const MIN_PLAYER_PX = 26;            // 선수 지름 가독 하한 (CSS px)
 
-const MATCH_SEC = 120;              // 경기 시간
-const GOAL_PAUSE = 1.4;             // 득점 후 정지 시간(초)
-
-// AI 난이도. 사람은 반응 시간이 있고 AI 는 매 프레임 완벽하게 반응하므로,
-// 속도만 같게 두면 사람이 이길 수 없다(테스트에서 6초 만에 실점했다).
-// 반응 지연·조준 오차·주저함으로 사람과 비슷한 조건을 만든다.
-// shoot(슛 확률)은 직관과 반대로 움직인다. 낮으면 AI 가 자기 골문 앞에서
-// 공을 못 걷어내고 골키퍼처럼 눌러앉아 오히려 사람이 득점하기 어려워진다.
-// 그래서 '쉬움'일수록 shoot 을 높여 공을 밖으로 차내게 한다.
-// 아래 값은 사람 수준 봇(반응 0.22초·조준오차 45)으로 난이도별 24경기씩
-// 돌려 고른 것: 쉬움 13승7무4패 / 보통 7승2무3패 / 어려움 2승3무7패.
-const LEVELS = [
-  { name:'쉬움', speed:0.60, react:0.42, aimErr:110, shoot:0.95 },
-  { name:'보통', speed:0.90, react:0.18, aimErr:38, shoot:0.80 },
-  { name:'어려움', speed:1.00, react:0.08, aimErr:12, shoot:1.00 }
-];
-let level = 1;
+let MATCH_SEC = 180;
+const GOAL_PAUSE = 1.6;
 
 const C = {
-  turf:'#1D3236', turfAlt:'#233C41', line:'#2B474C',
+  turf:'#1D3236', turfAlt:'#233C41', line:'#33565C',
   home:'#F58A5E', away:'#F2CE7A', ball:'#F2F7F4',
-  goalNet:'#37585F', text:'#8FA8A7'
+  gkHome:'#8FD1C4', gkAway:'#C9A6E0',
+  mapBg:'rgba(21,37,40,.82)', mapLine:'#3D6169'
 };
+
+// AI 난이도. 상대 팀 11명 전체에 적용된다(우리 팀 동료는 항상 '보통' 수준).
+// speed=최대속도 배수, react=목표 재계산 간격(사람의 반응 시간에 해당),
+// aimErr=공을 향할 때의 조준 오차, shoot=슛·패스 시도 확률, gk=골키퍼 반응.
+// 값은 사람 수준 봇으로 난이도별 30경기씩 자동 대전시켜 골랐다.
+// 승률 73% / 53% / 23%, 경기당 총 5~6골.
+//
+// speed 는 좁은 범위(0.86~0.92)로만 벌렸다. 이 값이 계단 함수처럼 작동하기
+// 때문이다 — AI 가 공 경합을 이기는 임계점이 0.87 근처에 있어서, 0.86→0.88
+// 만 바꿔도 승률이 67%→27% 로 튀었다. 난이도 차이는 주로 react(반응 지연)와
+// aimErr(조준 오차), gk(골키퍼 반응)로 만든다.
+const LEVELS = [
+  { name:'쉬움',  speed:0.86, react:0.50, aimErr:200, shoot:0.88, gk:0.55 },
+  { name:'보통',  speed:0.88, react:0.28, aimErr:100, shoot:0.88, gk:0.85 },
+  { name:'어려움', speed:0.92, react:0.12, aimErr:40,  shoot:0.88, gk:1.00 }
+];
+let level = 1;
 
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-// ── 화면 맞춤 ────────────────────────────────────────────────
-// 경기장 비율을 유지하며 stage 안에 꽉 채운다(레터박스).
-let view = { scale:1, ox:0, oy:0, w:0, h:0, rot:false };
+// ── 화면·카메라 ────────────────────────────────────────────────────
+// rot=true(세로 화면)면 경기장을 90° 돌려 세로로 쓴다. 안 돌리면 가로로
+// 긴 경기장이 폰 폭에 맞춰져 납작한 띠가 된다.
+let view = { scale:1, rot:false, w:0, h:0, dpr:1 };
+let cam = { x:FW / 2, y:FH / 2 };
+
 function resize() {
   const stage = document.getElementById('stage');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);   // 2 초과는 성능만 먹는다
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = stage.clientWidth, h = stage.clientHeight;
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
-
-  // 세로 화면에서는 경기장을 90° 돌려 세로로 쓴다. 안 돌리면 가로로 긴
-  // 1000x620 경기장이 폰 폭에 맞춰져 납작한 띠가 된다 — 실측으로 390x789
-  // 화면에서 경기장이 390x242 로 눌려 선수가 점만큼 작아졌다.
-  // 물리는 항상 가로 기준 좌표로 계산하고, 화면에 그릴 때와 입력을 받을
-  // 때만 회전을 적용한다.
   const rot = h > w;
-  const s = rot ? Math.min(w / FH, h / FW) : Math.min(w / FW, h / FH);
-  const fw = (rot ? FH : FW) * s, fh = (rot ? FW : FH) * s;
-  view = { rot, scale:s * dpr, ox:(w - fw) / 2 * dpr, oy:(h - fh) / 2 * dpr, w, h };
-}
-
-// 경기장 좌표 → 화면. 회전 시 필드 x=0(내 골문)이 화면 아래로 오게 맞춘다.
-// 즉 내 진영이 손 가까운 쪽이고 위로 공격한다.
-function applyFieldTransform() {
-  const { scale:s, ox, oy, rot } = view;
-  if (rot) ctx.setTransform(0, -s, s, 0, ox, oy + FW * s);
-  else ctx.setTransform(s, 0, 0, s, ox, oy);
+  // 회전 시 경기장 길이(FW)는 화면 높이에 놓인다.
+  const fit = rot ? Math.min(h / FW, w / FH) : Math.min(w / FW, h / FH);
+  const sCss = Math.max(fit, MIN_PLAYER_PX / (R_PLAYER * 2));
+  view = { rot, scale:sCss * dpr, w, h, dpr, whole:sCss <= fit + 1e-6 };
 }
 window.addEventListener('resize', resize);
 
-// ── 입력 ─────────────────────────────────────────────────────
+// 화면에 보이는 경기장 범위(논리단위)
+function viewSpan() {
+  const s = view.scale;
+  return view.rot
+    ? { x:canvas.height / s, y:canvas.width / s }    // 세로: 화면높이=필드x
+    : { x:canvas.width / s,  y:canvas.height / s };
+}
+
+function updateCamera(dt) {
+  const sp = viewSpan();
+  // 공을 따라가되 경기장 밖이 보이지 않게 가둔다.
+  // 보이는 범위가 경기장보다 크면 그 축은 가운데 고정.
+  const tx = sp.x >= FW ? FW / 2 : Math.max(sp.x / 2, Math.min(FW - sp.x / 2, ball.x));
+  const ty = sp.y >= FH ? FH / 2 : Math.max(sp.y / 2, Math.min(FH - sp.y / 2, ball.y));
+  const k = 1 - Math.exp(-7 * dt);     // 부드럽게 따라감(즉시 스냅은 눈이 피로하다)
+  cam.x += (tx - cam.x) * k;
+  cam.y += (ty - cam.y) * k;
+}
+
+// 경기장 좌표 → 화면. 회전 시 필드 x=0(우리 골문)이 화면 아래로 온다.
+function applyFieldTransform() {
+  const s = view.scale;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (view.rot) {
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.transform(0, -s, s, 0, 0, 0);
+    // 이 translate 는 회전 '전' 좌표계에 적용되므로 필드 순서(x, y) 그대로다.
+    // (y, x) 로 뒤집어 쓰면 카메라가 엉뚱한 곳을 보게 된다.
+    ctx.translate(-cam.x, -cam.y);
+  } else {
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(s, s);
+    ctx.translate(-cam.x, -cam.y);
+  }
+}
+
+// ── 입력 ───────────────────────────────────────────────────────────
 const keys = Object.create(null);
 addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true;
-  // 스페이스로 화면이 스크롤되거나 버튼이 눌리는 것 방지
-  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
-  if (e.code === 'Space') pressShoot(0);
-  if (e.code === 'ShiftRight' || e.code === 'Enter') pressShoot(1);
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','Enter'].includes(e.code)) e.preventDefault();
+  if (e.code === 'Space') act(0, 'shoot');
+  if (e.code === 'ShiftLeft') act(0, 'pass');
+  if (e.code === 'Enter') act(1, 'shoot');
+  if (e.code === 'ShiftRight') act(1, 'pass');
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });  // 창 전환 중 키 눌림 방지
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
-// 터치 조이스틱 — 손가락을 처음 댄 지점이 중심이 되는 방식(고정 위치보다 오조작이 적다)
 const touchLayer = document.getElementById('touch');
 const stickEl = document.getElementById('stick');
 const knobEl = document.getElementById('knob');
 const STICK_MAX = 52;
 let stick = { active:false, id:null, cx:0, cy:0, dx:0, dy:0 };
-
 const isTouch = matchMedia('(hover: none) and (pointer: coarse)').matches;
 if (isTouch) touchLayer.classList.add('on');
 
 touchLayer.addEventListener('pointerdown', e => {
-  if (e.target.id === 'shoot') return;            // 슛 버튼은 따로 처리
+  if (e.target.classList.contains('actbtn')) return;
   if (stick.active) return;
   stick.active = true; stick.id = e.pointerId;
   stick.cx = e.clientX; stick.cy = e.clientY; stick.dx = 0; stick.dy = 0;
@@ -261,199 +291,303 @@ function endStick(e) {
 }
 touchLayer.addEventListener('pointerup', endStick);
 touchLayer.addEventListener('pointercancel', endStick);
-document.getElementById('shoot').addEventListener('pointerdown', e => {
-  e.preventDefault(); pressShoot(0);
-});
+document.getElementById('shoot').addEventListener('pointerdown', e => { e.preventDefault(); act(0, 'shoot'); });
+document.getElementById('pass').addEventListener('pointerdown', e => { e.preventDefault(); act(0, 'pass'); });
 
-// ── 상태 ─────────────────────────────────────────────────────
-let mode = '1p';                    // '1p' | '2p'
-let state = 'title';                // 'title' | 'play' | 'goal' | 'end'
-let clock = MATCH_SEC;
-let goalTimer = 0;
-let lastScorer = -1;
+// ── 상태 ───────────────────────────────────────────────────────────
+let mode = '1p', state = 'title';
+let clock = MATCH_SEC, goalTimer = 0, lastScorer = -1;
 const score = [0, 0];
+const ball = { x:0, y:0, vx:0, vy:0, owner:null };
+const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
+const ctrl = [null, null];           // 사람이 조작 중인 선수 (1P, 2P)
 
-const ball = { x:0, y:0, vx:0, vy:0 };
-// 0 = 홈(왼쪽 골 수비, 오른쪽으로 공격), 1 = 어웨이
-const players = [
-  { x:0, y:0, vx:0, vy:0, side:0, kickCd:0, shootHeld:0 },
-  // aiT/aiTx/aiTy: 목표 지점을 매 프레임 다시 계산하지 않고 react 간격으로만
-  // 갱신한다 = 반응 지연. aiJit 은 조준 오차(득점당 새로 뽑는다).
-  { x:0, y:0, vx:0, vy:0, side:1, kickCd:0, shootHeld:0, aiT:0, aiTx:0, aiTy:0, aiJit:0 }
+// 4-4-2. 자기 골문(x=0) 기준 정규화 좌표.
+const FORMATION = [
+  { role:'GK', x:0.035, y:0.50 },
+  { role:'DF', x:0.20,  y:0.16 }, { role:'DF', x:0.19, y:0.39 },
+  { role:'DF', x:0.19,  y:0.61 }, { role:'DF', x:0.20, y:0.84 },
+  { role:'MF', x:0.42,  y:0.14 }, { role:'MF', x:0.40, y:0.38 },
+  { role:'MF', x:0.40,  y:0.62 }, { role:'MF', x:0.42, y:0.86 },
+  { role:'FW', x:0.62,  y:0.40 }, { role:'FW', x:0.62, y:0.60 }
 ];
 
-function pressShoot(i) {
-  if (state !== 'play') return;
-  players[i].shootHeld = 0.18;      // 짧은 입력 여유(약간 이른 탭도 먹히게)
+function buildTeams() {
+  for (const side of [0, 1]) {
+    teams[side] = FORMATION.map((f, i) => ({
+      side, role:f.role, no:i, isGK:f.role === 'GK',
+      hx:f.x, hy:f.y,                       // 정규화 홈 위치
+      // 골키퍼는 공에 대해서만 몸보다 넓게 닿는다 = 다이빙 선방.
+      // 이게 없으면 골문을 실측(146)까지 좁혀도 경기당 7골이 넘는다.
+      reach:f.role === 'GK' ? R_PLAYER * 1.9 : R_PLAYER,
+      x:0, y:0, vx:0, vy:0,
+      kickCd:0, actShoot:0, actPass:0,
+      aiT:Math.random() * 0.3, aiTx:0, aiTy:0
+    }));
+  }
 }
 
-function kickoff(towardSide) {
-  ball.x = FW / 2; ball.y = FH / 2; ball.vx = 0; ball.vy = 0;
-  players[0].x = FW * 0.25; players[0].y = FH / 2;
-  players[1].x = FW * 0.75; players[1].y = FH / 2;
-  for (const p of players) { p.vx = p.vy = 0; p.kickCd = 0; p.shootHeld = 0; }
-  // 실점한 쪽이 공을 살짝 밀고 시작
-  if (towardSide === 0) ball.vx = -60;
-  else if (towardSide === 1) ball.vx = 60;
+// 정규화 홈 위치 → 실제 좌표 (side 1 은 x 반전)
+function homePos(p) {
+  const nx = p.side === 0 ? p.hx : 1 - p.hx;
+  return { x:nx * FW, y:p.hy * FH };
 }
 
-function selectLevel(n) {
-  level = n;
-  for (const b of document.querySelectorAll('.lvl'))
-    b.classList.toggle('sel', +b.dataset.lvl === n);
-  try { localStorage.setItem(KEY + '.lvl', String(n)); } catch {}
-  showBest();
+function resetPositions(kickSide) {
+  for (const side of [0, 1]) for (const p of teams[side]) {
+    const h = homePos(p);
+    p.x = h.x; p.y = h.y; p.vx = p.vy = 0;
+    p.kickCd = 0; p.actShoot = 0; p.actPass = 0;
+    // 킥오프: 공을 넣는 팀만 센터서클 안으로 한 명 들여보낸다
+    if (p.role === 'FW' && p.no === 9 && side === kickSide) {
+      p.x = FW / 2 + (side === 0 ? -R_PLAYER * 2 : R_PLAYER * 2);
+      p.y = FH / 2;
+    }
+  }
+  ball.x = FW / 2; ball.y = FH / 2; ball.vx = ball.vy = 0;
+  cam.x = FW / 2; cam.y = FH / 2;
+  ctrl[0] = ctrl[1] = null;
 }
 
 function startMatch(m) {
   mode = m;
   score[0] = score[1] = 0;
   clock = MATCH_SEC;
+  buildTeams();
+  resetPositions(0);
   state = 'play';
-  kickoff(-1);
   document.getElementById('overlay').classList.add('hidden');
   document.getElementById('nameAway').textContent = (m === '2p') ? '2P' : 'AI';
+  document.getElementById('nameHome').textContent = (m === '2p') ? '1P' : '우리';
   syncHud();
 }
 
-// ── 물리 ─────────────────────────────────────────────────────
-const P_ACCEL = 1500, P_MAX = 330, P_FRICTION = 8;
-const B_FRICTION = 0.72;            // 초당 감쇠 계수(지수)
-const B_MAX = 1150;
-const KICK_BASE = 320, KICK_SHOOT = 760;
+function act(teamIdx, kind) {
+  if (state !== 'play') return;
+  const p = ctrl[teamIdx];
+  if (!p) return;
+  if (kind === 'shoot') p.actShoot = 0.20;
+  else p.actPass = 0.20;
+}
+
+// ── 물리 ───────────────────────────────────────────────────────────
+// 경기장이 1v1 판(1000x620)의 2배 이상이라 속도도 그만큼 올렸다.
+const P_ACCEL = 2100, P_MAX = 470, P_FRICTION = 8;
+const B_FRICTION = 0.55, B_MAX = 2000;
+const TOUCH_V = 430, PASS_V = 950, SHOOT_V = 1500;
 
 function movePlayer(p, ax, ay, dt, speedMul = 1) {
   const m = Math.hypot(ax, ay);
   if (m > 1) { ax /= m; ay /= m; }
   p.vx += ax * P_ACCEL * dt;
   p.vy += ay * P_ACCEL * dt;
-  // 마찰(입력이 없으면 멈추게)
-  const f = Math.exp(-P_FRICTION * dt);
-  if (m < 0.01) { p.vx *= f; p.vy *= f; }
+  if (m < 0.01) { const f = Math.exp(-P_FRICTION * dt); p.vx *= f; p.vy *= f; }
   const cap = P_MAX * speedMul;
   const sp = Math.hypot(p.vx, p.vy);
   if (sp > cap) { p.vx = p.vx / sp * cap; p.vy = p.vy / sp * cap; }
   p.x += p.vx * dt; p.y += p.vy * dt;
-  // 경기장 밖으로 못 나가게
   p.x = Math.max(R_PLAYER, Math.min(FW - R_PLAYER, p.x));
   p.y = Math.max(R_PLAYER, Math.min(FH - R_PLAYER, p.y));
   if (p.kickCd > 0) p.kickCd -= dt;
-  if (p.shootHeld > 0) p.shootHeld -= dt;
+  if (p.actShoot > 0) p.actShoot -= dt;
+  if (p.actPass > 0) p.actPass -= dt;
 }
 
-function inGoalMouth(y) {
-  return y > (FH - GOAL_H) / 2 && y < (FH + GOAL_H) / 2;
-}
+const inGoalMouth = (y) => y > (FH - GOAL_H) / 2 && y < (FH + GOAL_H) / 2;
 
 function updateBall(dt) {
-  ball.x += ball.vx * dt;
-  ball.y += ball.vy * dt;
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
   const f = Math.pow(B_FRICTION, dt);
   ball.vx *= f; ball.vy *= f;
-  if (Math.hypot(ball.vx, ball.vy) < 4) { ball.vx = 0; ball.vy = 0; }
+  if (Math.hypot(ball.vx, ball.vy) < 5) { ball.vx = 0; ball.vy = 0; }
 
-  // 위·아래 벽
-  if (ball.y < R_BALL) { ball.y = R_BALL; ball.vy = Math.abs(ball.vy) * 0.72; }
-  if (ball.y > FH - R_BALL) { ball.y = FH - R_BALL; ball.vy = -Math.abs(ball.vy) * 0.72; }
-
-  // 좌·우: 골문 안이면 통과(득점), 아니면 튕김
+  if (ball.y < R_BALL) { ball.y = R_BALL; ball.vy = Math.abs(ball.vy) * 0.7; }
+  if (ball.y > FH - R_BALL) { ball.y = FH - R_BALL; ball.vy = -Math.abs(ball.vy) * 0.7; }
   if (ball.x < R_BALL) {
     if (inGoalMouth(ball.y)) return goal(1);
-    ball.x = R_BALL; ball.vx = Math.abs(ball.vx) * 0.72;
+    ball.x = R_BALL; ball.vx = Math.abs(ball.vx) * 0.7;
   }
   if (ball.x > FW - R_BALL) {
     if (inGoalMouth(ball.y)) return goal(0);
-    ball.x = FW - R_BALL; ball.vx = -Math.abs(ball.vx) * 0.72;
+    ball.x = FW - R_BALL; ball.vx = -Math.abs(ball.vx) * 0.7;
   }
 }
 
-// 선수-공 접촉: 밀어내기 + 슛
+// 목표 골문 방향으로 조준할 지점 (약간 골문 안쪽을 노린다)
+function aimAt(side) {
+  return { x:side === 0 ? FW : 0, y:FH / 2 + (Math.random() * 2 - 1) * GOAL_H * 0.3 };
+}
+
+// 패스 대상: 앞쪽에 있고 가까운 동료
+function passTarget(p) {
+  const dir = p.side === 0 ? 1 : -1;
+  let best = null, bestScore = Infinity;
+  for (const t of teams[p.side]) {
+    if (t === p || t.isGK) continue;
+    const ahead = (t.x - p.x) * dir;
+    if (ahead < 40) continue;                        // 뒤나 옆은 제외
+    const d = Math.hypot(t.x - p.x, t.y - p.y);
+    if (d < 120) continue;                           // 너무 가까우면 의미 없다
+    const sc = d - ahead * 0.6;                      // 가깝고 전진성 있는 쪽 우선
+    if (sc < bestScore) { bestScore = sc; best = t; }
+  }
+  return best;
+}
+
 function collide(p) {
   const dx = ball.x - p.x, dy = ball.y - p.y;
-  const d = Math.hypot(dx, dy);
-  const min = R_PLAYER + R_BALL;
+  const d = Math.hypot(dx, dy), min = p.reach + R_BALL;
   if (d >= min || d === 0) return;
-
   const nx = dx / d, ny = dy / d;
-  ball.x = p.x + nx * min;                 // 겹침 해소(공이 몸에 끼는 것 방지)
-  ball.y = p.y + ny * min;
+  ball.x = p.x + nx * min; ball.y = p.y + ny * min;
 
-  const shooting = p.shootHeld > 0 && p.kickCd <= 0;
-  const power = shooting ? KICK_SHOOT : KICK_BASE;
-  if (shooting) { p.kickCd = 0.28; p.shootHeld = 0; }
+  // 골키퍼는 잡아서 앞으로 크게 걷어낸다. 다른 선수처럼 튕겨내면
+  // 골문 앞에서 공이 계속 맴돌아 결국 실점한다.
+  if (p.isGK) {
+    p.kickCd = 0.35;
+    const dir = p.side === 0 ? 1 : -1;
+    const ang = Math.atan2((FH / 2 - p.y) * 0.6 + (Math.random() * 2 - 1) * 300, dir * 900);
+    ball.vx = Math.cos(ang) * 1150;
+    ball.vy = Math.sin(ang) * 1150;
+    return;
+  }
 
-  // 달려온 속도를 얹어 준다 — 마주 달리며 차면 더 세게 나간다
-  const carry = p.vx * nx + p.vy * ny;
-  const v = power + Math.max(0, carry) * 0.55;
-  ball.vx = nx * v + p.vx * 0.25;
-  ball.vy = ny * v + p.vy * 0.25;
-
-  const sp = Math.hypot(ball.vx, ball.vy);
-  if (sp > B_MAX) { ball.vx = ball.vx / sp * B_MAX; ball.vy = ball.vy / sp * B_MAX; }
+  let vx, vy;
+  if (p.actShoot > 0 && p.kickCd <= 0) {
+    p.actShoot = 0; p.kickCd = 0.3;
+    const a = aimAt(p.side);
+    const ang = Math.atan2(a.y - p.y, a.x - p.x);
+    vx = Math.cos(ang) * SHOOT_V; vy = Math.sin(ang) * SHOOT_V;
+  } else if (p.actPass > 0 && p.kickCd <= 0) {
+    p.actPass = 0; p.kickCd = 0.25;
+    const t = passTarget(p);
+    if (t) {
+      const ang = Math.atan2(t.y - p.y, t.x - p.x);
+      const d2 = Math.hypot(t.x - p.x, t.y - p.y);
+      const v = Math.min(PASS_V, 420 + d2 * 0.9);     // 거리에 맞춰 세기 조절
+      vx = Math.cos(ang) * v; vy = Math.sin(ang) * v;
+    } else {
+      const a = aimAt(p.side);
+      const ang = Math.atan2(a.y - p.y, a.x - p.x);
+      vx = Math.cos(ang) * PASS_V * 0.8; vy = Math.sin(ang) * PASS_V * 0.8;
+    }
+  } else {
+    // 그냥 몸으로 밀기 — 달려온 속도를 얹는다
+    const carry = Math.max(0, p.vx * nx + p.vy * ny);
+    const v = TOUCH_V + carry * 0.5;
+    vx = nx * v + p.vx * 0.3; vy = ny * v + p.vy * 0.3;
+  }
+  const sp = Math.hypot(vx, vy);
+  ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
+  ball.vy = sp > B_MAX ? vy / sp * B_MAX : vy;
 }
 
-// 선수끼리 겹치지 않게
-function separatePlayers() {
-  const a = players[0], b = players[1];
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const d = Math.hypot(dx, dy), min = R_PLAYER * 2;
-  if (d >= min || d === 0) return;
-  const push = (min - d) / 2, nx = dx / d, ny = dy / d;
-  a.x -= nx * push; a.y -= ny * push;
-  b.x += nx * push; b.y += ny * push;
+// 선수끼리 겹치지 않게 (22명 → 231쌍, Canvas 2D 로 충분히 가볍다)
+function separateAll() {
+  const all = teams[0].concat(teams[1]);
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.hypot(dx, dy), min = R_PLAYER * 2;
+    if (d >= min || d === 0) continue;
+    const push = (min - d) / 2, nx = dx / d, ny = dy / d;
+    a.x -= nx * push; a.y -= ny * push;
+    b.x += nx * push; b.y += ny * push;
+  }
 }
 
-function goal(side) {                        // side = 득점한 쪽
-  score[side]++;
-  lastScorer = side;
-  state = 'goal';
-  goalTimer = GOAL_PAUSE;
+function goal(side) {
+  score[side]++; lastScorer = side;
+  state = 'goal'; goalTimer = GOAL_PAUSE;
   syncHud();
 }
 
-// ── AI ───────────────────────────────────────────────────────
-// 규칙 기반. 공이 자기 진영에 있으면 공과 골문 사이로 들어가 막고,
-// 상대 진영이면 공 뒤로 돌아가 골 방향으로 밀어낸다.
-function aiInput(p, dt) {
-  const L = LEVELS[level];
-  const dirSign = p.side === 0 ? 1 : -1;     // 공격 진행 방향
+// ── AI ─────────────────────────────────────────────────────────────
+// 팀에서 공에 가장 가까운 필드 선수만 공을 쫓고, 나머지는 포메이션 위치를
+// 공 위치에 따라 밀고 당긴 지점을 지킨다. 전원이 공만 쫓으면 뭉쳐버린다.
+function nearestToBall(side, exclude) {
+  let best = null, bd = Infinity;
+  for (const p of teams[side]) {
+    if (p.isGK || p === exclude) continue;
+    const d = Math.hypot(ball.x - p.x, ball.y - p.y);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
 
-  // 목표 지점은 react 간격으로만 갱신한다 = 사람의 반응 시간에 해당.
-  // 매 프레임 갱신하면 공을 절대 놓치지 않아 사람이 이길 수 없다.
+// 포메이션 위치를 공 쪽으로 이동시킨 목표 지점
+function slotTarget(p) {
+  const h = homePos(p);
+  const shiftX = (ball.x - FW / 2) * 0.42;
+  const shiftY = (ball.y - FH / 2) * 0.30;
+  let tx = h.x + shiftX, ty = h.y + shiftY;
+  // 수비는 자기 진영을 크게 벗어나지 않는다
+  if (p.role === 'DF') {
+    tx = p.side === 0 ? Math.min(tx, FW * 0.58) : Math.max(tx, FW * 0.42);
+  }
+  return {
+    x:Math.max(R_PLAYER, Math.min(FW - R_PLAYER, tx)),
+    y:Math.max(R_PLAYER, Math.min(FH - R_PLAYER, ty))
+  };
+}
+
+function gkTarget(p) {
+  const gx = p.side === 0 ? 0 : FW;
+  const dir = p.side === 0 ? 1 : -1;
+  // 골라인에서 조금 나와 공과 골문 중심을 잇는 선 위에 선다
+  const t = Math.max(0, Math.min(1, 1 - Math.abs(ball.x - gx) / (FW * 0.35)));
+  const out = 40 + t * (PA_D * 0.55);
+  const ty = FH / 2 + (ball.y - FH / 2) * 0.88;
+  return {
+    x:gx + dir * out,
+    y:Math.max((FH - GOAL_H) / 2 - 30, Math.min((FH + GOAL_H) / 2 + 30, ty))
+  };
+}
+
+function aiPlayer(p, dt, L, isChaser) {
   p.aiT -= dt;
   if (p.aiT <= 0) {
-    p.aiT = L.react;
-    p.aiJit = (Math.random() * 2 - 1) * L.aimErr;
-
-    // 공을 골문 방향으로 밀려면 '공보다 자기 골문 쪽'에 서야 한다
-    let tx = ball.x - dirSign * (R_PLAYER + R_BALL + 6);
-    let ty = ball.y + p.aiJit;
-
-    // 공이 자기 골문에 가까우면 각을 재지 않고 곧장 걷어내러 간다
-    const dangerous = (p.side === 0) ? ball.x < FW * 0.28 : ball.x > FW * 0.72;
-    if (dangerous) { tx = ball.x - dirSign * (R_PLAYER + R_BALL); ty = ball.y; }
-
-    p.aiTx = Math.max(R_PLAYER, Math.min(FW - R_PLAYER, tx));
-    p.aiTy = Math.max(R_PLAYER, Math.min(FH - R_PLAYER, ty));
+    p.aiT = L.react * (p.isGK ? 0.5 : 1);
+    let t;
+    if (p.isGK) {
+      t = gkTarget(p);
+      // 골키퍼 반응은 별도 계수 — 난이도가 낮으면 늦게 붙는다
+      t.y = FH / 2 + (t.y - FH / 2) * L.gk;
+    } else if (isChaser) {
+      const dir = p.side === 0 ? 1 : -1;
+      t = {
+        x:ball.x - dir * (R_PLAYER + R_BALL + 4),
+        y:ball.y + (Math.random() * 2 - 1) * L.aimErr
+      };
+    } else {
+      t = slotTarget(p);
+    }
+    p.aiTx = Math.max(R_PLAYER, Math.min(FW - R_PLAYER, t.x));
+    p.aiTy = Math.max(R_PLAYER, Math.min(FH - R_PLAYER, t.y));
   }
 
   let ax = p.aiTx - p.x, ay = p.aiTy - p.y;
   const d = Math.hypot(ax, ay);
-  if (d > 1) { ax /= d; ay /= d; }
+  if (d > 6) { ax /= d; ay /= d; } else { ax = ay = 0; }
 
-  // 공 뒤에 자리를 잡았고 골문을 향하고 있으면 슛 — 난이도에 따라 놓치기도 한다
-  const dangerous = (p.side === 0) ? ball.x < FW * 0.28 : ball.x > FW * 0.72;
-  const lined = Math.sign(ball.x - p.x) === dirSign || dangerous;
-  const near = Math.hypot(ball.x - p.x, ball.y - p.y) < R_PLAYER + R_BALL + 26;
-  if (near && lined && p.kickCd <= 0 && Math.random() < L.shoot) p.shootHeld = 0.12;
-
+  // 공이 발 앞에 있으면 슛이나 패스
+  const bd = Math.hypot(ball.x - p.x, ball.y - p.y);
+  if (bd < R_PLAYER + R_BALL + 24 && p.kickCd <= 0) {
+    const dir = p.side === 0 ? 1 : -1;
+    const toGoal = p.side === 0 ? FW - p.x : p.x;
+    if (p.isGK) {
+      // 처리는 collide() 안에서 직접 한다 (잡아서 걷어내기)
+    } else if (toGoal < FW * 0.32 && Math.random() < L.shoot) {
+      p.actShoot = 0.15;                                      // 골문 근처면 슛
+    } else if (Math.random() < L.shoot * 0.8) {
+      p.actPass = 0.15;                                       // 아니면 전진 패스
+    }
+  }
   return { ax, ay };
 }
 
-// ── 루프 ─────────────────────────────────────────────────────
+// ── 사람 입력 ──────────────────────────────────────────────────────
 function readHuman(i) {
-  // 입력은 '화면 기준'으로 모은 뒤, 세로 화면이면 경기장 좌표로 돌린다.
-  // (그리기만 돌리고 입력을 안 돌리면 조작 방향이 90° 어긋난다)
   let sx = 0, sy = 0;
   if (i === 0) {
     if (keys.KeyA || keys.ArrowLeft) sx -= 1;
@@ -467,16 +601,31 @@ function readHuman(i) {
     if (keys.KeyI) sy -= 1;
     if (keys.KeyK) sy += 1;
   }
-  // 화면 위로 밀면 상대 골문(필드 +x) 쪽으로, 오른쪽은 필드 +y 쪽으로.
-  return view.rot ? { ax:-sy, ay:sx } : { ax:sx, ay:sy };
+  // 화면 위로 밀면 상대 골문(필드 +x) 쪽. 회전 시 입력도 같이 돌려야 한다.
+  if (i === 0) return view.rot ? { ax:-sy, ay:sx } : { ax:sx, ay:sy };
+  // 2P 는 반대 골문을 공격하므로 화면 기준을 뒤집어 준다
+  return view.rot ? { ax:sy, ay:-sx } : { ax:-sx, ay:-sy };
 }
 
+// 조작 대상 자동 전환. 히스테리시스를 둬서 두 선수가 비슷할 때 깜빡이지 않게 한다.
+function pickControlled(teamIdx) {
+  const side = teamIdx;
+  const cur = ctrl[teamIdx];
+  const best = nearestToBall(side, null);
+  if (!cur) { ctrl[teamIdx] = best; return; }
+  if (cur.isGK) { ctrl[teamIdx] = best; return; }
+  const dCur = Math.hypot(ball.x - cur.x, ball.y - cur.y);
+  const dBest = best ? Math.hypot(ball.x - best.x, ball.y - best.y) : Infinity;
+  if (best && best !== cur && dBest < dCur - 90) ctrl[teamIdx] = best;
+}
+
+// ── 루프 ───────────────────────────────────────────────────────────
 function step(dt) {
   if (state === 'goal') {
     goalTimer -= dt;
     if (goalTimer <= 0) {
       if (clock <= 0) endMatch();
-      else { state = 'play'; kickoff(lastScorer === 0 ? 1 : 0); }
+      else { state = 'play'; resetPositions(lastScorer === 0 ? 1 : 0); }
     }
     return;
   }
@@ -485,17 +634,34 @@ function step(dt) {
   clock -= dt;
   if (clock <= 0) { clock = 0; endMatch(); return; }
 
-  const in0 = readHuman(0);
-  const in1 = (mode === '2p') ? readHuman(1) : aiInput(players[1], dt);
+  const L = LEVELS[level];
+  pickControlled(0);
+  if (mode === '2p') pickControlled(1);
 
-  movePlayer(players[0], in0.ax, in0.ay, dt);
-  movePlayer(players[1], in1.ax, in1.ay, dt, mode === '2p' ? 1 : LEVELS[level].speed);
-  separatePlayers();
+  const chaser = [nearestToBall(0, null), nearestToBall(1, null)];
+
+  for (const side of [0, 1]) {
+    const human = (side === 0) || (side === 1 && mode === '2p');
+    const inp = human ? readHuman(side) : null;
+    for (const p of teams[side]) {
+      if (human && p === ctrl[side]) {
+        movePlayer(p, inp.ax, inp.ay, dt);            // 사람은 감속 없음
+      } else if (human) {
+        // 사람 팀의 나머지 선수는 아군 AI (난이도와 무관하게 보통 수준)
+        const a = aiPlayer(p, dt, LEVELS[1], p === chaser[side] && p !== ctrl[side]);
+        movePlayer(p, a.ax, a.ay, dt, 0.92);
+      } else {
+        const a = aiPlayer(p, dt, L, p === chaser[side]);
+        movePlayer(p, a.ax, a.ay, dt, L.speed);
+      }
+    }
+  }
+
+  separateAll();
   updateBall(dt);
-  if (state !== 'play') return;             // 득점으로 상태가 바뀌었으면 중단
-  collide(players[0]);
-  collide(players[1]);
-
+  if (state !== 'play') return;                        // 득점으로 중단
+  for (const side of [0, 1]) for (const p of teams[side]) collide(p);
+  updateCamera(dt);
   syncClock();
 }
 
@@ -505,8 +671,7 @@ function endMatch() {
   const win = score[0] > score[1] ? '승리' : score[0] < score[1] ? '패배' : '무승부';
   ov.querySelector('h1').textContent = `${win}  ${score[0]} : ${score[1]}`;
   document.getElementById('howto').innerHTML = mode === '1p'
-    ? `${LEVELS[level].name} 난이도 경기가 끝났습니다.`
-    : '2인 대전이 끝났습니다.';
+    ? `${LEVELS[level].name} 난이도 경기가 끝났습니다.` : '2인 대전이 끝났습니다.';
   document.getElementById('btn1p').textContent = '다시 하기';
   document.getElementById('btn2p').textContent = '처음으로';
   document.getElementById('levelRow').style.display = mode === '1p' ? '' : 'none';
@@ -515,83 +680,137 @@ function endMatch() {
   showBest();
 }
 
-// ── 그리기 ───────────────────────────────────────────────────
+// ── 그리기 ─────────────────────────────────────────────────────────
 function draw() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = C.turf;
+  ctx.fillStyle = '#152528';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  applyFieldTransform();
 
-  // 잔디 줄무늬
+  applyFieldTransform();
+  drawPitch();
+  for (const side of [0, 1]) for (const p of teams[side]) drawPlayer(p);
+  drawBall();
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // 경기장 전체가 이미 보이면 미니맵은 군더더기다
+  if (!view.whole) drawMinimap();
+  if (state === 'goal') drawGoalText();
+}
+
+function drawPitch() {
+  ctx.fillStyle = C.turf;
+  ctx.fillRect(0, 0, FW, FH);
   ctx.fillStyle = C.turfAlt;
-  const stripes = 10, sw = FW / stripes;
+  const stripes = 14, sw = FW / stripes;
   for (let i = 0; i < stripes; i += 2) ctx.fillRect(i * sw, 0, sw, FH);
 
-  // 라인
-  ctx.strokeStyle = C.line; ctx.lineWidth = 3;
-  ctx.strokeRect(1.5, 1.5, FW - 3, FH - 3);
+  ctx.strokeStyle = C.line; ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, FW - 4, FH - 4);
   ctx.beginPath(); ctx.moveTo(FW / 2, 0); ctx.lineTo(FW / 2, FH); ctx.stroke();
-  ctx.beginPath(); ctx.arc(FW / 2, FH / 2, 78, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(FW / 2, FH / 2, 5, 0, Math.PI * 2); ctx.fillStyle = C.line; ctx.fill();
-  // 페널티 박스
-  const bw = 120, bh = 300;
-  ctx.strokeRect(0, (FH - bh) / 2, bw, bh);
-  ctx.strokeRect(FW - bw, (FH - bh) / 2, bw, bh);
+  ctx.beginPath(); ctx.arc(FW / 2, FH / 2, CIRCLE_R, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = C.line;
+  ctx.beginPath(); ctx.arc(FW / 2, FH / 2, 7, 0, Math.PI * 2); ctx.fill();
+
+  for (const gx of [0, FW]) {
+    const dir = gx === 0 ? 1 : -1;
+    ctx.strokeRect(gx === 0 ? 0 : FW - PA_D, (FH - PA_W) / 2, PA_D, PA_W);
+    ctx.strokeRect(gx === 0 ? 0 : FW - GA_D, (FH - GA_W) / 2, GA_D, GA_W);
+    ctx.beginPath(); ctx.arc(gx + dir * PEN_SPOT, FH / 2, 7, 0, Math.PI * 2); ctx.fill();
+  }
 
   // 골문
   const gy = (FH - GOAL_H) / 2;
-  ctx.fillStyle = C.goalNet;
-  ctx.fillRect(0, gy, 8, GOAL_H);
-  ctx.fillRect(FW - 8, gy, 8, GOAL_H);
-  ctx.strokeStyle = C.home; ctx.lineWidth = 4;
-  ctx.beginPath(); ctx.moveTo(2, gy); ctx.lineTo(2, gy + GOAL_H); ctx.stroke();
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = C.home;
+  ctx.beginPath(); ctx.moveTo(3, gy); ctx.lineTo(3, gy + GOAL_H); ctx.stroke();
   ctx.strokeStyle = C.away;
-  ctx.beginPath(); ctx.moveTo(FW - 2, gy); ctx.lineTo(FW - 2, gy + GOAL_H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(FW - 3, gy); ctx.lineTo(FW - 3, gy + GOAL_H); ctx.stroke();
+}
 
-  // 선수
-  drawPlayer(players[0], C.home, mode === '2p' ? '1P' : '나');
-  drawPlayer(players[1], C.away, mode === '2p' ? '2P' : 'AI');
+function drawPlayer(p) {
+  const isCtrl = p === ctrl[0] || (mode === '2p' && p === ctrl[1]);
+  const base = p.side === 0
+    ? (p.isGK ? C.gkHome : C.home)
+    : (p.isGK ? C.gkAway : C.away);
 
-  // 공 (그림자 + 본체)
-  ctx.fillStyle = 'rgba(0,0,0,.28)';
+  ctx.fillStyle = 'rgba(0,0,0,.32)';
+  ctx.beginPath(); ctx.ellipse(p.x + 5, p.y + 7, R_PLAYER, R_PLAYER * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = base;
+  ctx.beginPath(); ctx.arc(p.x, p.y, R_PLAYER, 0, Math.PI * 2); ctx.fill();
+
+  // 조작 중인 선수는 흰 테두리 + 위쪽 삼각 표시 (22명 중에서 찾기 쉽게)
+  if (isCtrl) {
+    ctx.strokeStyle = '#F2F7F4'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, R_PLAYER + 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.save();
+    ctx.translate(p.x, p.y - R_PLAYER - 22);
+    if (view.rot) ctx.rotate(Math.PI / 2);
+    ctx.fillStyle = '#F2F7F4';
+    ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(-11, -6); ctx.lineTo(11, -6); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // 등번호는 세워서 그린다
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  if (view.rot) ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = '#152528';
+  ctx.font = '700 24px ' + bodyFont();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(p.isGK ? 'GK' : String(p.no), 0, 1);
+  ctx.restore();
+}
+
+function drawBall() {
+  ctx.fillStyle = 'rgba(0,0,0,.3)';
   ctx.beginPath(); ctx.ellipse(ball.x + 3, ball.y + 5, R_BALL, R_BALL * 0.8, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = C.ball;
   ctx.beginPath(); ctx.arc(ball.x, ball.y, R_BALL, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#152528';
   ctx.beginPath(); ctx.arc(ball.x, ball.y, R_BALL * 0.42, 0, Math.PI * 2); ctx.fill();
+}
 
-  if (state === 'goal') {
-    ctx.fillStyle = 'rgba(21,37,40,.55)';
-    ctx.fillRect(0, 0, FW, FH);
-    // 글자는 화면 기준으로 그린다 — 경기장 변환을 그대로 쓰면 세로 화면에서
-    // 90° 누워버린다.
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = lastScorer === 0 ? C.home : C.away;
-    ctx.font = '700 ' + Math.round(Math.min(canvas.width, canvas.height) * 0.16) + 'px ' + bodyFont();
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('골!', canvas.width / 2, canvas.height / 2);
+// 미니맵은 화면 좌표로 그린다(경기장 변환·회전과 무관하게 항상 가로).
+// 위치는 우측 상단 — 아래쪽은 조이스틱(좌)과 슛·패스 버튼(우)이 차지한다.
+function drawMinimap() {
+  const pad = 10 * view.dpr;
+  const mw = Math.min(canvas.width * 0.34, 260 * view.dpr);
+  const mh = mw * (FH / FW);
+  const mx = canvas.width - mw - pad, my = pad;
+  const sx = mw / FW, sy = mh / FH;
+
+  ctx.fillStyle = C.mapBg;
+  ctx.fillRect(mx, my, mw, mh);
+  ctx.strokeStyle = C.mapLine; ctx.lineWidth = 1 * view.dpr;
+  ctx.strokeRect(mx + .5, my + .5, mw - 1, mh - 1);
+  ctx.beginPath(); ctx.moveTo(mx + mw / 2, my); ctx.lineTo(mx + mw / 2, my + mh); ctx.stroke();
+
+  // 현재 화면에 보이는 범위
+  const sp = viewSpan();
+  ctx.strokeStyle = 'rgba(242,247,244,.35)';
+  ctx.strokeRect(mx + (cam.x - sp.x / 2) * sx, my + (cam.y - sp.y / 2) * sy, sp.x * sx, sp.y * sy);
+
+  const r = Math.max(1.6 * view.dpr, mw * 0.012);
+  for (const side of [0, 1]) for (const p of teams[side]) {
+    ctx.fillStyle = p.side === 0 ? C.home : C.away;
+    ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy, r, 0, Math.PI * 2); ctx.fill();
   }
+  ctx.fillStyle = C.ball;
+  ctx.beginPath(); ctx.arc(mx + ball.x * sx, my + ball.y * sy, r * 0.85, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawGoalText() {
+  ctx.fillStyle = 'rgba(21,37,40,.5)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = lastScorer === 0 ? C.home : C.away;
+  ctx.font = '700 ' + Math.round(Math.min(canvas.width, canvas.height) * 0.16) + 'px ' + bodyFont();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('골!', canvas.width / 2, canvas.height / 2);
 }
 
 function bodyFont() { return getComputedStyle(document.body).fontFamily; }
 
-function drawPlayer(p, color, label) {
-  ctx.fillStyle = 'rgba(0,0,0,.3)';
-  ctx.beginPath(); ctx.ellipse(p.x + 4, p.y + 6, R_PLAYER, R_PLAYER * 0.8, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = color;
-  ctx.beginPath(); ctx.arc(p.x, p.y, R_PLAYER, 0, Math.PI * 2); ctx.fill();
-
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  if (view.rot) ctx.rotate(Math.PI / 2);   // 경기장 회전(-90°)을 상쇄해 글자를 세운다
-  ctx.fillStyle = '#152528';
-  ctx.font = '700 18px ' + bodyFont();
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(label, 0, 1);
-  ctx.restore();
-}
-
-// ── HUD ──────────────────────────────────────────────────────
+// ── HUD·기록 ───────────────────────────────────────────────────────
 function syncHud() {
   document.getElementById('sHome').textContent = score[0];
   document.getElementById('sAway').textContent = score[1];
@@ -603,12 +822,10 @@ function syncClock() {
     Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
 }
 
-// ── 기록 (서버가 없으니 localStorage) ────────────────────────
-const KEY = 'ilbbang.soccer.v1';
-// 전적은 난이도별로 따로 센다. 쉬움 10승과 어려움 10승은 의미가 다르다.
+const KEY = 'ilbbang.soccer11.v1';
 function loadRec(n = level) {
   try { return JSON.parse(localStorage.getItem(KEY + '.rec' + n)) || { w:0, d:0, l:0, bestGd:0 }; }
-  catch { return { w:0, d:0, l:0, bestGd:0 }; }      // 사생활 보호 모드 등 접근 실패 대비
+  catch { return { w:0, d:0, l:0, bestGd:0 }; }
 }
 function saveBest(gd) {
   const r = loadRec();
@@ -619,14 +836,19 @@ function saveBest(gd) {
 function showBest() {
   const r = loadRec();
   document.getElementById('best').textContent = (r.w + r.d + r.l)
-    ? `${LEVELS[level].name} 전적 ${r.w}승 ${r.d}무 ${r.l}패 · 최다 득점차 +${r.bestGd}`
-    : '';
+    ? `${LEVELS[level].name} 전적 ${r.w}승 ${r.d}무 ${r.l}패 · 최다 득점차 +${r.bestGd}` : '';
+}
+function selectLevel(n) {
+  level = n;
+  for (const b of document.querySelectorAll('.lvl')) b.classList.toggle('sel', +b.dataset.lvl === n);
+  try { localStorage.setItem(KEY + '.lvl', String(n)); } catch {}
+  showBest();
 }
 
-// ── 시작 ─────────────────────────────────────────────────────
+// ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
-  ? '왼쪽 화면을 <span class="keys">끌어서</span> 이동, <span class="keys">슛</span> 버튼으로 강하게 찹니다.<br>몸으로 밀어도 공은 굴러갑니다.'
-  : '<span class="keys">WASD</span> 또는 <span class="keys">방향키</span>로 이동, <span class="keys">스페이스</span>로 슛.<br>2인 대전은 2P가 <span class="keys">IJKL</span> 이동, <span class="keys">엔터</span> 슛.';
+  ? '11명 대 11명. <span class="keys">공에 가장 가까운 우리 선수</span>가 자동으로 잡히고, 흰 테두리로 표시됩니다.<br>화면을 끌어 이동 · <span class="keys">슛</span> · <span class="keys">패스</span> 버튼. 오른쪽 아래 미니맵으로 전체 상황을 봅니다.'
+  : '11명 대 11명. <span class="keys">공에 가장 가까운 우리 선수</span>가 자동으로 잡히고, 흰 테두리로 표시됩니다.<br><span class="keys">WASD</span>/방향키 이동 · <span class="keys">스페이스</span> 슛 · <span class="keys">왼쪽 Shift</span> 패스<br>2P는 <span class="keys">IJKL</span> 이동 · <span class="keys">엔터</span> 슛 · <span class="keys">오른쪽 Shift</span> 패스';
 
 function showTitle() {
   state = 'title';
@@ -642,24 +864,23 @@ function showTitle() {
 
 for (const b of document.querySelectorAll('.lvl'))
   b.addEventListener('click', () => selectLevel(+b.dataset.lvl));
-
 document.getElementById('btn1p').addEventListener('click', () => startMatch('1p'));
 document.getElementById('btn2p').addEventListener('click', () => {
-  if (state === 'end') showTitle();          // '처음으로'
-  else startMatch('2p');
+  if (state === 'end') showTitle(); else startMatch('2p');
 });
 
+document.getElementById('howto').innerHTML = HOWTO;
 let savedLvl = 1;
 try { savedLvl = Math.min(2, Math.max(0, +localStorage.getItem(KEY + '.lvl') || 1)); } catch {}
 selectLevel(savedLvl);
 
 resize();
-kickoff(-1);
+buildTeams();
+resetPositions(0);
 
 let last = performance.now();
 function frame(now) {
-  // dt 상한 — 탭을 백그라운드에 두면 now 점프가 커서 공이 벽을 뚫는다
-  const dt = Math.min((now - last) / 1000, 1 / 30);
+  const dt = Math.min((now - last) / 1000, 1 / 30);   // 백그라운드 복귀 시 점프 방지
   last = now;
   step(dt);
   draw();
