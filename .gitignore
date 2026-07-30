@@ -14,3 +14,6 @@ tmp/
 
 # 참조되지 않는 구버전 버튼 이미지
 assets/clickable-v1/
+
+# 개인용 권한 오버라이드 (.claude/settings.json 은 팀 공용이라 추적한다)
+.claude/settings.local.json
