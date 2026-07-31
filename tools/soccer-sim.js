@@ -18,7 +18,11 @@ const path = require('path');
 const vm = require('vm');
 
 const GAME = path.join(__dirname, '..', 'games', 'soccer', 'index.html');
-const TARGET_WIN = [73, 53, 23];        // 쉬움 / 보통 / 어려움 목표 승률(%)
+// 쉬움 / 보통 / 어려움 목표 승률(%).
+// 쉬움은 원래 73% 였으나 2026-07-31 실측 81.5% 를 목표로 인정해 80% 로
+// 고쳤다 — 봇은 사람의 하한이라 사람은 이보다 더 이기고, 쉬움은 처음
+// 잡는 사람이 이기라고 있는 난이도다. games/soccer/balance.md 참조.
+const TARGET_WIN = [80, 53, 23];
 const TARGET_GOALS = [5, 6];            // 경기당 총 득점 목표 범위
 
 // ── 인자 ────────────────────────────────────────────────────────────
