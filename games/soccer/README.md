@@ -11,6 +11,7 @@
 | [principles.md](principles.md) | 확장 중에도 지키는 4가지 제약. 다른 모든 문서의 상위 규칙 |
 | [baseline.md](baseline.md) | 현재 구현이 가진 것과 없는 것. 모든 설계의 출발점 |
 | [balance.md](balance.md) | 실측 승률과 측정 조건. 도구는 `tools/soccer-sim.js` |
+| [balance-expansion.md](balance-expansion.md) | 4단계 이후 회귀·팀·전술 실측 |
 | [input-system.md](input-system.md) | 조작과 플레이 감. 공 소유, 조준, 액션, 선수 전환 |
 | [match-rules.md](match-rules.md) | 경기 규칙과 심판. 아웃, 세트피스, 오프사이드, 파울 |
 | [team-tactics.md](team-tactics.md) | 팀·전술·선수 상성. 능력치, 포메이션, 전술 슬라이더 |
@@ -36,12 +37,11 @@ team-tactics  ──→ game-modes      (팀이 달라야 토너먼트·리그�
 
 ## 현재 상태
 
-3단계 심판 규칙까지 구현 완료. 오프사이드·파울·옐로·PK가 동작하며
-단계별 밸런스와 `speed` 스윕은 `balance.md`에 기록돼 있다.
+4단계 팀·전술까지 구현 완료. 8팀·포메이션 4종·능력치·전술 상성이
+동작하며 확장 밸런스는 `balance-expansion.md`에 기록돼 있다.
 
-`balance.md` 를 뺀 나머지 설계 문서의 제안은 **미측정**이다. 숫자가 적힌
-항목은 시뮬레이션으로 확인하기 전까지 확정이 아니며, 각 문서 안에서
-`확정` / `제안` / `미결` 로 구분해 표시한다.
+`game-modes.md`의 5~6단계는 아직 제안이다. 숫자가 적힌 항목은
+시뮬레이션으로 확인하기 전까지 확정이 아니며 문서 안에서 구분한다.
 
 ## 공개
 

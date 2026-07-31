@@ -29,12 +29,19 @@ const TARGET_WIN = [80, 53, 23];
 const TARGET_GOALS = [5, 6];            // 경기당 총 득점 목표 범위
 const LEVEL_NAMES = ['쉬움', '보통', '어려움'];
 const SWEEP_SPEEDS = Array.from({ length:11 }, (_, i) => (84 + i) / 100);
+const TACTIC_PRESETS = {
+  default:null,
+  high:{ line:.70, press:.35, width:.28, chasers:2 },
+  press:{ line:.58, press:.55, width:.25, chasers:2 },
+  wide:{ line:.50, press:.45, width:.45, chasers:2 }
+};
 
 // ── 인자 ────────────────────────────────────────────────────────────
 function parseArgs(argv) {
   const o = {
     n:null, seed:1, levels:[0, 1, 2], botLevel:1, sweepSpeed:false,
-    gkReach:null, opponentSpeed:null, selfTest:false
+    gkReach:null, opponentSpeed:null, selfTest:false, homeTeam:0, awayTeam:0,
+    homeTactic:'default', awayTactic:'default'
   };
   let levelSet = false;
   for (let i = 0; i < argv.length; i++) {
@@ -50,6 +57,10 @@ function parseArgs(argv) {
     else if (a === '--bot') o.botLevel = +next();
     else if (a === '--gk-reach') o.gkReach = +next();
     else if (a === '--opponent-speed') o.opponentSpeed = +next();
+    else if (a === '--home-team') o.homeTeam = +next();
+    else if (a === '--away-team') o.awayTeam = +next();
+    else if (a === '--home-tactic') o.homeTactic = next();
+    else if (a === '--away-tactic') o.awayTactic = next();
     else if (a === '--sweep-speed') o.sweepSpeed = true;
     else if (a === '--self-test') o.selfTest = true;
     else if (a === '-h' || a === '--help') o.help = true;
@@ -72,6 +83,12 @@ function parseArgs(argv) {
       (!Number.isFinite(o.opponentSpeed) || o.opponentSpeed < 0.5 || o.opponentSpeed > 1.2)) {
     throw new Error('--opponent-speed 는 0.5~1.2 숫자여야 합니다');
   }
+  if (![o.homeTeam, o.awayTeam].every(n => Number.isInteger(n) && n >= 0 && n < 8)) {
+    throw new Error('--home-team/--away-team 은 0~7 정수여야 합니다');
+  }
+  if (![o.homeTactic, o.awayTactic].every(n => Object.hasOwn(TACTIC_PRESETS, n))) {
+    throw new Error('--home-tactic/--away-tactic 은 default|high|press|wide 여야 합니다');
+  }
   return o;
 }
 
@@ -83,6 +100,8 @@ const HELP = `동네 축구 밸런스 측정
       --bot <0|1|2>    사람 자리를 대신하는 봇의 수준 (기본 1=보통)
       --gk-reach <수>  골키퍼 공 접촉 반경 배수 측정값 덮어쓰기
       --opponent-speed <수>  1P 상대 이동 속도 배수 덮어쓰기
+      --home-team <0~7> / --away-team <0~7>  측정 팀 선택
+      --home-tactic/--away-tactic <default|high|press|wide>
       --sweep-speed    보통 speed 0.84~0.94를 0.01 간격으로 측정
                        기본 경기 수는 속도값당 200 (-n으로 변경 가능)
       --self-test      오프사이드·파울 결정론 시나리오 검사
@@ -207,6 +226,13 @@ const HARNESS = `
     setOpponentSpeed: function (n) {
       for (var i = 0; i < OPPONENT_SPEED_MUL.length; i++) OPPONENT_SPEED_MUL[i] = n;
     },
+    setTeams: function (home, away) {
+      selectedTeams[0] = home; selectedTeams[1] = away;
+      selectedFormation[0] = TEAM_DEFS[home].formation;
+      selectedFormation[1] = TEAM_DEFS[away].formation;
+      tacticOverride[0] = tacticOverride[1] = null;
+    },
+    setTactics: function (side, tactics) { tacticOverride[side] = tactics; },
     run: function (lvl) {
       level = lvl;
       startMatch('1p');
@@ -259,7 +285,22 @@ const HARNESS = `
       separateAll();
       var foul = state === 'setpiece' && setpiece && matchStats.fouls[1] === 1;
       var card = matchStats.cards[1] === 1 && tackler.yellow === 1;
-      return { offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card };
+      var formationsValid = Object.keys(FORMATIONS).every(function (name) {
+        selectedFormation[0] = name; selectedFormation[1] = name;
+        buildTeams(); resetPositions(0);
+        return teams[0].length === 11 && teams[1].length === 11 &&
+          teams[0].every(function (p, i) {
+            return teams[0].every(function (q, j) {
+              return i === j || Math.hypot(p.x - q.x, p.y - q.y) >= R_PLAYER * 2;
+            });
+          });
+      });
+      var ratingsOrdered = teamRating(TEAM_DEFS[7]) > teamRating(TEAM_DEFS[0]) &&
+                           teamRating(TEAM_DEFS[0]) > teamRating(TEAM_DEFS[5]);
+      return {
+        offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
+        formationsValid:formationsValid, ratingsOrdered:ratingsOrdered
+      };
     }
   };
 })();
@@ -299,6 +340,9 @@ function runBatch(job) {
   if (job.opponentSpeed !== null && job.opponentSpeed !== undefined) {
     sim.setOpponentSpeed(job.opponentSpeed);
   }
+  sim.setTeams(job.homeTeam || 0, job.awayTeam || 0);
+  if (job.homeTactic !== 'default') sim.setTactics(0, TACTIC_PRESETS[job.homeTactic]);
+  if (job.awayTactic !== 'default') sim.setTactics(1, TACTIC_PRESETS[job.awayTactic]);
 
   let w = 0, d = 0, l = 0, gf = 0, ga = 0, steps = 0;
   const setpieces = {};
@@ -468,7 +512,9 @@ async function main() {
     console.log(`  병렬 작업 ${workerLimit(SWEEP_SPEEDS.length)}개`);
     const jobs = SWEEP_SPEEDS.map(speed => ({
       lvl:1, speed, n:opt.n, seed:opt.seed, botLevel:opt.botLevel,
-      gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed
+      gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed,
+      homeTeam:opt.homeTeam, awayTeam:opt.awayTeam
+      ,homeTactic:opt.homeTactic, awayTactic:opt.awayTactic
     }));
     const rows = await runJobs(jobs, (row, done, total) => {
       console.log(
@@ -486,10 +532,14 @@ async function main() {
   console.log(`  사람 자리 봇  ${LEVEL_NAMES[opt.botLevel]} 수준`);
   if (opt.gkReach !== null) console.log(`  골키퍼 도달 배수 ${opt.gkReach}`);
   if (opt.opponentSpeed !== null) console.log(`  상대 이동 배수 ${opt.opponentSpeed}`);
+  console.log(`  팀       ${opt.homeTeam} vs ${opt.awayTeam}`);
+  console.log(`  전술     ${opt.homeTactic} vs ${opt.awayTactic}`);
   console.log(`  병렬 작업 ${workerLimit(opt.levels.length)}개`);
   const jobs = opt.levels.map(lvl => ({
     lvl, n:opt.n, seed:opt.seed, botLevel:opt.botLevel,
-    gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed
+    gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed,
+    homeTeam:opt.homeTeam, awayTeam:opt.awayTeam
+    ,homeTactic:opt.homeTactic, awayTactic:opt.awayTactic
   }));
   const rows = await runJobs(jobs, (row, done, total) => {
     console.log(

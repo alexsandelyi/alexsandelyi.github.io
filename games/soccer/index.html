@@ -66,6 +66,21 @@
   }
   #lengthRow button { padding:7px 13px; font-size:13px; }
   .best { font-size:12.5px; color:var(--gold); }
+  .teamSetup {
+    display:grid; grid-template-columns:auto minmax(120px,1fr); gap:7px 9px;
+    align-items:center; width:min(390px,100%); font-size:12px; text-align:left;
+  }
+  select, input[type="range"] {
+    width:100%; font:inherit; color:var(--text-body); background:var(--bg-raised);
+    border:1px solid var(--border-subtle); border-radius:7px; padding:7px;
+  }
+  .rating { grid-column:1/-1; color:var(--gold); text-align:center; min-height:18px; }
+  details.tactics {
+    width:min(390px,100%); border:1px solid var(--border-subtle);
+    border-radius:9px; padding:7px 10px; color:var(--text-muted); font-size:12px;
+  }
+  details.tactics summary { cursor:pointer; text-align:center; }
+  .tacticGrid { display:grid; grid-template-columns:auto 1fr; gap:7px; margin-top:9px; }
 
   /* 모바일 조작 */
   #touch { position:absolute; inset:0; display:none; }
@@ -124,6 +139,22 @@
       <button class="len ghost" data-sec="360">6분</button>
       <button class="len ghost" data-sec="600">10분</button>
     </div>
+    <div class="teamSetup" id="teamSetup">
+      <label for="homeTeam">우리 팀</label><select id="homeTeam"></select>
+      <label for="awayTeam">상대 팀</label><select id="awayTeam"></select>
+      <label for="formationPick">포메이션</label><select id="formationPick"></select>
+      <div class="rating" id="teamRating"></div>
+    </div>
+    <details class="tactics" id="tacticsPanel">
+      <summary>우리 팀 전술</summary>
+      <div class="tacticGrid">
+        <label for="lineTactic">수비선</label><input id="lineTactic" type="range" min="45" max="70">
+        <label for="pressTactic">압박</label><input id="pressTactic" type="range" min="25" max="55">
+        <label for="widthTactic">폭</label><input id="widthTactic" type="range" min="20" max="45">
+        <label for="chaserTactic">추격</label>
+        <select id="chaserTactic"><option value="1">1명</option><option value="2">2명</option></select>
+      </div>
+    </details>
     <div class="btnrow">
       <button id="btn1p">AI와 대전</button>
       <button id="btn2p" class="ghost">2인 대전</button>
@@ -186,9 +217,9 @@ const C = {
 // 재현되지 않았다. 난이도 차이는 react(반응 지연), aimErr(조준 오차),
 // gk(골키퍼 반응)를 포함한 전체 조합으로 관리하고 단계마다 다시 측정한다.
 const LEVELS = [
-  { name:'쉬움',  speed:0.86, react:0.65, aimErr:200, shoot:0.88, gk:0.45 },
-  { name:'보통',  speed:0.88, react:0.28, aimErr:100, shoot:0.88, gk:0.85 },
-  { name:'어려움', speed:0.92, react:0.12, aimErr:40,  shoot:0.88, gk:1.00 }
+  { name:'쉬움',  speed:1, react:0.90, aimErr:280, shoot:0.75, gk:0.35 },
+  { name:'보통',  speed:1, react:0.28, aimErr:100, shoot:0.88, gk:0.85 },
+  { name:'어려움', speed:1, react:0.15, aimErr:55,  shoot:0.88, gk:0.95 }
 ];
 let level = 1;
 
@@ -352,30 +383,101 @@ const attackDir = [1, -1];
 const ctrl = [null, null];           // 사람이 조작 중인 선수 (1P, 2P)
 const ctrlLock = [0, 0];
 
-// 4-4-2. 자기 골문(x=0) 기준 정규화 좌표.
-const FORMATION = [
-  { role:'GK', x:0.035, y:0.50 },
-  { role:'DF', x:0.20,  y:0.16 }, { role:'DF', x:0.19, y:0.39 },
-  { role:'DF', x:0.19,  y:0.61 }, { role:'DF', x:0.20, y:0.84 },
-  { role:'MF', x:0.42,  y:0.14 }, { role:'MF', x:0.40, y:0.38 },
-  { role:'MF', x:0.40,  y:0.62 }, { role:'MF', x:0.42, y:0.86 },
-  { role:'FW', x:0.62,  y:0.40 }, { role:'FW', x:0.62, y:0.60 }
+// 자기 골문(x=0) 기준 정규화 좌표.
+const FORMATIONS = {
+  '4-4-2': [
+    {role:'GK',x:.035,y:.50},
+    {role:'DF',x:.20,y:.16},{role:'DF',x:.19,y:.39},{role:'DF',x:.19,y:.61},{role:'DF',x:.20,y:.84},
+    {role:'MF',x:.42,y:.14},{role:'MF',x:.40,y:.38},{role:'MF',x:.40,y:.62},{role:'MF',x:.42,y:.86},
+    {role:'FW',x:.62,y:.40},{role:'FW',x:.62,y:.60}
+  ],
+  '4-3-3': [
+    {role:'GK',x:.035,y:.50},
+    {role:'DF',x:.20,y:.15},{role:'DF',x:.19,y:.38},{role:'DF',x:.19,y:.62},{role:'DF',x:.20,y:.85},
+    {role:'MF',x:.41,y:.25},{role:'MF',x:.39,y:.50},{role:'MF',x:.41,y:.75},
+    {role:'FW',x:.64,y:.18},{role:'FW',x:.66,y:.50},{role:'FW',x:.64,y:.82}
+  ],
+  '3-5-2': [
+    {role:'GK',x:.035,y:.50},
+    {role:'DF',x:.20,y:.24},{role:'DF',x:.18,y:.50},{role:'DF',x:.20,y:.76},
+    {role:'MF',x:.43,y:.10},{role:'MF',x:.39,y:.30},{role:'MF',x:.40,y:.50},
+    {role:'MF',x:.39,y:.70},{role:'MF',x:.43,y:.90},
+    {role:'FW',x:.64,y:.39},{role:'FW',x:.64,y:.61}
+  ],
+  '5-3-2': [
+    {role:'GK',x:.035,y:.50},
+    {role:'DF',x:.22,y:.10},{role:'DF',x:.19,y:.30},{role:'DF',x:.18,y:.50},
+    {role:'DF',x:.19,y:.70},{role:'DF',x:.22,y:.90},
+    {role:'MF',x:.42,y:.25},{role:'MF',x:.40,y:.50},{role:'MF',x:.42,y:.75},
+    {role:'FW',x:.62,y:.39},{role:'FW',x:.62,y:.61}
+  ]
+};
+
+const TEAM_DEFS = [
+  {id:'alley',name:'골목 FC',formation:'4-4-2',stats:{speed:62,shot:62,pass:62,defense:62,stamina:62,keeping:62},tactics:{line:.58,press:.42,width:.30,chasers:1}},
+  {id:'market',name:'시장 상인회',formation:'5-3-2',stats:{speed:52,shot:58,pass:61,defense:76,stamina:70,keeping:72},tactics:{line:.50,press:.35,width:.27,chasers:1}},
+  {id:'river',name:'한강 러너스',formation:'4-3-3',stats:{speed:78,shot:65,pass:60,defense:48,stamina:82,keeping:55},tactics:{line:.66,press:.47,width:.42,chasers:1}},
+  {id:'dawn',name:'새벽 조기회',formation:'4-4-2',stats:{speed:58,shot:70,pass:72,defense:63,stamina:74,keeping:68},tactics:{line:.57,press:.40,width:.32,chasers:1}},
+  {id:'park',name:'공원 패밀리',formation:'3-5-2',stats:{speed:61,shot:56,pass:76,defense:58,stamina:66,keeping:57},tactics:{line:.60,press:.38,width:.25,chasers:1}},
+  {id:'rail',name:'철길 유나이티드',formation:'5-3-2',stats:{speed:48,shot:54,pass:50,defense:67,stamina:57,keeping:64},tactics:{line:.47,press:.29,width:.24,chasers:1}},
+  {id:'roof',name:'옥상 시티',formation:'4-3-3',stats:{speed:72,shot:75,pass:69,defense:52,stamina:58,keeping:51},tactics:{line:.68,press:.52,width:.40,chasers:2}},
+  {id:'bolt',name:'번개 클럽',formation:'3-5-2',stats:{speed:84,shot:78,pass:73,defense:70,stamina:80,keeping:75},tactics:{line:.63,press:.50,width:.34,chasers:2}}
 ];
+const selectedTeams = [0, 0];
+const selectedFormation = ['4-4-2', '4-4-2'];
+const tacticOverride = [null, null];
+
+function clampStat(n) { return Math.max(1, Math.min(99, n)); }
+function teamRating(t) {
+  const s = t.stats;
+  return (s.speed + s.shot + s.pass + s.defense + s.stamina + s.keeping) / 6;
+}
+function ratingBars(t) {
+  const n = Math.max(1, Math.min(5, Math.round(teamRating(t) / 20)));
+  return '●'.repeat(n) + '○'.repeat(5 - n);
+}
+function playerStats(team, f, i) {
+  const s = team.stats, jitter = (i * 7 % 9) - 4;
+  return {
+    speed:clampStat(s.speed + jitter + (f.role === 'FW' ? 3 : 0)),
+    shot:clampStat(s.shot + jitter + (f.role === 'FW' ? 10 : f.role === 'MF' ? 2 : -7)),
+    pass:clampStat(s.pass - jitter + (f.role === 'MF' ? 8 : 0)),
+    defense:clampStat(s.defense + (f.role === 'DF' ? 10 : f.role === 'FW' ? -8 : 0)),
+    stamina:clampStat(s.stamina + jitter),
+    keeping:clampStat(f.role === 'GK' ? s.keeping : 1)
+  };
+}
+
+function teamTactics(side) {
+  return tacticOverride[side] || TEAM_DEFS[selectedTeams[side]].tactics;
+}
 
 function buildTeams() {
   for (const side of [0, 1]) {
-    teams[side] = FORMATION.map((f, i) => ({
+    const team = TEAM_DEFS[selectedTeams[side]];
+    const formation = FORMATIONS[selectedFormation[side] || team.formation];
+    teams[side] = formation.map((f, i) => {
+      const stats = playerStats(team, f, i);
+      return {
       side, role:f.role, no:i, isGK:f.role === 'GK',
       hx:f.x, hy:f.y,                       // 정규화 홈 위치
+      stats,
+      speedMul:.84 + stats.speed / 99 * .22,
+      shotMul:.84 + stats.shot / 99 * .28,
+      passMul:.84 + stats.pass / 99 * .26,
+      defenseMul:.76 + stats.defense / 99 * .46,
+      energy:1,
       // 골키퍼는 공에 대해서만 몸보다 넓게 닿는다 = 다이빙 선방.
       // 이게 없으면 골문을 실측(146)까지 좁혀도 경기당 7골이 넘는다.
-      reach:f.role === 'GK' ? R_PLAYER * GK_REACH_MUL : R_PLAYER,
+      reach:f.role === 'GK'
+        ? R_PLAYER * GK_REACH_MUL * (.82 + stats.keeping / 99 * .30) : R_PLAYER,
       x:0, y:0, vx:0, vy:0,
       kickCd:0, trapCd:0, tackleCd:0, tackleT:0,
       actShoot:0, actPass:0, actThrough:0, shootHeld:false, shootCharge:0,
       aimX:attackDir[side], aimY:0, manualAim:false, yellow:0,
       aiT:Math.random() * 0.3, aiTx:0, aiTy:0
-    }));
+    };
+    });
   }
 }
 
@@ -392,7 +494,7 @@ function resetPositions(kickSide) {
     p.kickCd = p.trapCd = p.tackleCd = p.tackleT = 0;
     p.actShoot = p.actPass = p.actThrough = 0;
     p.shootHeld = false; p.shootCharge = 0;
-    p.yellow = 0;
+    p.yellow = 0; p.energy = 1;
     // 킥오프: 공을 넣는 팀만 센터서클 안으로 한 명 들여보낸다
     if (p.role === 'FW' && p.no === 9 && side === kickSide) {
       p.x = FW / 2 - attackDir[side] * R_PLAYER * 2;
@@ -420,8 +522,8 @@ function startMatch(m) {
   resetPositions(0);
   state = 'play';
   document.getElementById('overlay').classList.add('hidden');
-  document.getElementById('nameAway').textContent = (m === '2p') ? '2P' : 'AI';
-  document.getElementById('nameHome').textContent = (m === '2p') ? '1P' : '우리';
+  document.getElementById('nameAway').textContent = TEAM_DEFS[selectedTeams[1]].name;
+  document.getElementById('nameHome').textContent = TEAM_DEFS[selectedTeams[0]].name;
   syncHud();
 }
 
@@ -473,8 +575,10 @@ const B_FRICTION = 0.55, B_MAX = 2000;
 const TOUCH_V = 430, PASS_V = 950, SHOOT_V = 1650;
 const TRAP_R = R_PLAYER + R_BALL + 7, TRAP_V = 620;
 const OWNER_SPEED = 0.88, SPRINT_SPEED = 1.25, REOWN_CD = 0.35;
-const OPPONENT_SPEED_MUL = [0.95, 0.92, 1.00];
+const OPPONENT_SPEED_MUL = [1, 1, 1];
 const HUMAN_SHOOT_MUL = [1.18, 1.40, 1.18];
+const HUMAN_TACKLE_BONUS = [0, 0.28, 0];
+const HUMAN_GK_REACH_MUL = [1, 1.35, 1];
 
 function movePlayer(p, ax, ay, dt, speedMul = 1) {
   const m = Math.hypot(ax, ay);
@@ -717,6 +821,7 @@ function aimAt(side) {
 // 패스 대상: 앞쪽에 있고 가까운 동료
 function passTarget(p, through = false) {
   const dir = attackDir[p.side];
+  const tactic = teamTactics(p.side);
   let best = null, bestScore = Infinity;
   for (const t of teams[p.side]) {
     if (t === p || t.isGK) continue;
@@ -733,7 +838,12 @@ function passTarget(p, through = false) {
       if (lane < 100) laneRisk += (100 - lane) * 4;
     }
     const edgePenalty = Math.max(0, 150 - Math.min(t.y, FH - t.y)) * 3;
-    const sc = d - ahead * (through ? 0.95 : 0.6) + laneRisk + edgePenalty;
+    // 넓게 벌린 팀은 가까운 중앙 선수만 고르지 않고 빈 측면의 전진
+    // 패스도 적극적으로 선택한다. 기본 폭(.30) 이하는 기존 판정을 유지한다.
+    const outletReward = Math.abs(t.y - FH / 2) *
+      Math.max(0, tactic.width - .30) * 4;
+    const sc = d - ahead * (through ? 0.95 : 0.6) +
+      laneRisk + edgePenalty - outletReward;
     if (sc < bestScore) { bestScore = sc; best = t; }
   }
   return best;
@@ -748,9 +858,12 @@ function kickOwned(p, kind, power = 0.65) {
     if (p.manualAim && aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 1000; ty = p.y + p.aimY / aimMag * 1000;
     } else {
-      const a = aimAt(p.side); tx = a.x; ty = a.y;
+      const a = aimAt(p.side); tx = a.x;
+      ty = mode === '1p' && p === ctrl[0]
+        ? FH / 2 + (Math.random() < .5 ? -1 : 1) * GOAL_H * .38
+        : a.y;
     }
-    v = SHOOT_V * (0.62 + 0.38 * power) *
+    v = SHOOT_V * p.shotMul * (0.62 + 0.38 * power) *
       (mode === '1p' && p === ctrl[0] ? HUMAN_SHOOT_MUL[level] : 1);
   } else {
     const through = kind === 'through';
@@ -761,10 +874,11 @@ function kickOwned(p, kind, power = 0.65) {
       tx = t.x + (tm > 5 ? t.vx / tm : attackDir[p.side]) * lead;
       ty = t.y + (tm > 5 ? t.vy / tm : 0) * lead;
       const d = Math.hypot(tx - p.x, ty - p.y);
-      v = Math.min(PASS_V * (through ? 1.12 : 1), 420 + d * (through ? 1.0 : 0.9));
+      v = Math.min(PASS_V * p.passMul * (through ? 1.12 : 1),
+        420 + d * p.passMul * (through ? 1.0 : 0.9));
     } else if (aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 800; ty = p.y + p.aimY / aimMag * 800;
-      v = PASS_V * (through ? 0.95 : 0.8);
+      v = PASS_V * p.passMul * (through ? 0.95 : 0.8);
     } else {
       const a = aimAt(p.side); tx = a.x; ty = a.y; v = PASS_V * 0.8;
     }
@@ -778,7 +892,9 @@ function kickOwned(p, kind, power = 0.65) {
 
 function collide(p) {
   const dx = ball.x - p.x, dy = ball.y - p.y;
-  const d = Math.hypot(dx, dy), min = p.reach + R_BALL;
+  const gkAssist = p.isGK && p.side === 0 && mode === '1p'
+    ? HUMAN_GK_REACH_MUL[level] : 1;
+  const d = Math.hypot(dx, dy), min = p.reach * gkAssist + R_BALL;
   if (d >= min || d === 0) return;
   const nx = dx / d, ny = dy / d;
 
@@ -786,7 +902,10 @@ function collide(p) {
     const owner = ball.owner;
     if (owner === p || owner.side === p.side) return;
     const rel = Math.hypot(p.vx - owner.vx, p.vy - owner.vy);
-    if (p.tackleT > 0 || rel > P_MAX * 0.72) {
+    const assist = mode === '1p' && p.side === 0 ? HUMAN_TACKLE_BONUS[level] : 0;
+    const contest = p.defenseMul / (p.defenseMul + owner.defenseMul);
+    if ((p.tackleT > 0 && Math.random() < contest + .18 + assist) ||
+        rel > P_MAX * 0.72) {
       owner.trapCd = REOWN_CD;
       ball.owner = null; ball.freeCd = 0.06; ball.lastTouch = p;
       ball.x = p.x + nx * min; ball.y = p.y + ny * min;
@@ -814,20 +933,21 @@ function collide(p) {
   if (p.actShoot > 0 && p.kickCd <= 0) {
     p.actShoot = 0; p.kickCd = 0.3;
     const a = aimAt(p.side);
-    const ang = Math.atan2(a.y - p.y, a.x - p.x);
-    vx = Math.cos(ang) * SHOOT_V; vy = Math.sin(ang) * SHOOT_V;
+      const ang = Math.atan2(a.y - p.y, a.x - p.x);
+      vx = Math.cos(ang) * SHOOT_V * p.shotMul; vy = Math.sin(ang) * SHOOT_V * p.shotMul;
   } else if (p.actPass > 0 && p.kickCd <= 0) {
     p.actPass = 0; p.kickCd = 0.25;
     const t = passTarget(p);
     if (t) {
       const ang = Math.atan2(t.y - p.y, t.x - p.x);
       const d2 = Math.hypot(t.x - p.x, t.y - p.y);
-      const v = Math.min(PASS_V, 420 + d2 * 0.9);     // 거리에 맞춰 세기 조절
+      const v = Math.min(PASS_V * p.passMul, 420 + d2 * 0.9 * p.passMul);
       vx = Math.cos(ang) * v; vy = Math.sin(ang) * v;
     } else {
       const a = aimAt(p.side);
       const ang = Math.atan2(a.y - p.y, a.x - p.x);
-      vx = Math.cos(ang) * PASS_V * 0.8; vy = Math.sin(ang) * PASS_V * 0.8;
+      vx = Math.cos(ang) * PASS_V * 0.8 * p.passMul;
+      vy = Math.sin(ang) * PASS_V * 0.8 * p.passMul;
     }
   } else if (p.actThrough > 0 && p.kickCd <= 0) {
     p.actThrough = 0; p.kickCd = 0.25;
@@ -928,15 +1048,31 @@ function nearestToBall(side, exclude) {
   return best;
 }
 
+function nearestChasers(side, exclude) {
+  return teams[side]
+    .filter(p => !p.isGK && p !== exclude)
+    .sort((a, b) => Math.hypot(ball.x - a.x, ball.y - a.y) -
+                    Math.hypot(ball.x - b.x, ball.y - b.y))
+    .slice(0, teamTactics(side).chasers);
+}
+
 // 포메이션 위치를 공 쪽으로 이동시킨 목표 지점
 function slotTarget(p) {
   const h = homePos(p);
-  const shiftX = (ball.x - FW / 2) * 0.42;
-  const shiftY = (ball.y - FH / 2) * 0.30;
-  let tx = h.x + shiftX, ty = h.y + shiftY;
+  const tactic = teamTactics(p.side);
+  const shiftX = (ball.x - FW / 2) * tactic.press;
+  // 폭은 공 쪽으로 전원이 몰리는 정도가 아니라, 대형 자체가 좌우로
+  // 벌어지는 정도다. 공을 따라가는 이동은 작게 유지해 넓은 전개가
+  // 두 명 압박을 자연스럽게 분산시키게 한다.
+  const spread = .72 + tactic.width * 1.55;
+  const shiftY = (ball.y - FH / 2) * .18;
+  let tx = h.x + shiftX;
+  let ty = FH / 2 + (h.y - FH / 2) * spread + shiftY;
   // 수비는 자기 진영을 크게 벗어나지 않는다
   if (p.role === 'DF') {
-    tx = attackDir[p.side] === 1 ? Math.min(tx, FW * 0.58) : Math.max(tx, FW * 0.42);
+    tx = attackDir[p.side] === 1
+      ? Math.min(tx, FW * tactic.line)
+      : Math.max(tx, FW * (1 - tactic.line));
   }
   if (level > 0 && (p.role === 'MF' || p.role === 'FW')) {
     const line = secondLastDefenderLine(p.side);
@@ -954,7 +1090,8 @@ function gkTarget(p) {
   // 골라인에서 조금 나와 공과 골문 중심을 잇는 선 위에 선다
   const t = Math.max(0, Math.min(1, 1 - Math.abs(ball.x - gx) / (FW * 0.35)));
   const out = 40 + t * (PA_D * 0.55);
-  const ty = FH / 2 + (ball.y - FH / 2) * 0.88;
+  const keeping = .78 + p.stats.keeping / 99 * .18;
+  const ty = FH / 2 + (ball.y - FH / 2) * keeping;
   return {
     x:gx + dir * out,
     y:Math.max((FH - GOAL_H) / 2 - 30, Math.min((FH + GOAL_H) / 2 + 30, ty))
@@ -998,10 +1135,14 @@ function aiPlayer(p, dt, L, isChaser) {
   if (bd < R_PLAYER + R_BALL + 24 && p.kickCd <= 0) {
     const dir = attackDir[p.side];
     const toGoal = dir === 1 ? FW - p.x : p.x;
+    const exploitHighLine = teamTactics(p.side).width > .38 &&
+      teamTactics(1 - p.side).line > .65;
     if (p.isGK) {
       // 처리는 collide() 안에서 직접 한다 (잡아서 걷어내기)
     } else if (toGoal < FW * 0.32 && Math.random() < L.shoot) {
       p.actShoot = 0.65;                                      // 골문 근처면 슛
+    } else if (exploitHighLine && Math.random() < L.shoot * .8) {
+      p.actThrough = 0.15;                                    // 높은 선 뒤 측면 침투
     } else if (Math.random() < L.shoot * 0.8) {
       p.actPass = 0.15;                                       // 아니면 전진 패스
     }
@@ -1129,7 +1270,10 @@ function step(dt) {
   pickControlled(0);
   if (mode === '2p') pickControlled(1);
 
-  const chaser = [nearestToBall(0, null), nearestToBall(1, null)];
+  const chaser = [
+    new Set(nearestChasers(0, null)),
+    new Set(nearestChasers(1, null))
+  ];
 
   for (const side of [0, 1]) {
     const human = (side === 0) || (side === 1 && mode === '2p');
@@ -1140,15 +1284,19 @@ function step(dt) {
         p.manualAim = !!inp.human && im > 0.15;
         if (p.manualAim) { p.aimX = inp.ax / im; p.aimY = inp.ay / im; }
         const ownerMul = ball.owner === p ? OWNER_SPEED : 1;
-        movePlayer(p, inp.ax, inp.ay, dt, ownerMul * (inp.sprint ? SPRINT_SPEED : 1));
+        const sprinting = inp.sprint && p.energy > .05;
+        p.energy = Math.max(0, Math.min(1,
+          p.energy + dt * (sprinting ? -.12 * (1.2 - p.stats.stamina / 150) : .045)));
+        movePlayer(p, inp.ax, inp.ay, dt,
+          p.speedMul * ownerMul * (sprinting ? SPRINT_SPEED : 1));
       } else if (human) {
         // 사람 팀의 나머지 선수는 아군 AI (난이도와 무관하게 보통 수준)
-        const a = aiPlayer(p, dt, LEVELS[1], p === chaser[side] && p !== ctrl[side]);
-        movePlayer(p, a.ax, a.ay, dt, 0.92);
+        const a = aiPlayer(p, dt, LEVELS[1], chaser[side].has(p) && p !== ctrl[side]);
+        movePlayer(p, a.ax, a.ay, dt, p.speedMul);
       } else {
-        const a = aiPlayer(p, dt, L, p === chaser[side]);
+        const a = aiPlayer(p, dt, L, chaser[side].has(p));
         movePlayer(p, a.ax, a.ay, dt,
-          L.speed * (mode === '1p' ? OPPONENT_SPEED_MUL[level] : 1));
+          p.speedMul * (mode === '1p' ? OPPONENT_SPEED_MUL[level] : 1));
       }
     }
   }
@@ -1412,6 +1560,57 @@ function selectLength(sec) {
   if (state === 'title') { clock = MATCH_SEC / 2; half = 1; syncClock(); }
 }
 
+function syncTeamPanel() {
+  const team = TEAM_DEFS[selectedTeams[0]];
+  document.getElementById('homeTeam').value = String(selectedTeams[0]);
+  document.getElementById('awayTeam').value = String(selectedTeams[1]);
+  document.getElementById('formationPick').value = selectedFormation[0];
+  document.getElementById('teamRating').textContent =
+    `${team.name} 종합 ${ratingBars(team)} · 속도/슛/패스/수비/체력/선방`;
+  const t = teamTactics(0);
+  document.getElementById('lineTactic').value = Math.round(t.line * 100);
+  document.getElementById('pressTactic').value = Math.round(t.press * 100);
+  document.getElementById('widthTactic').value = Math.round(t.width * 100);
+  document.getElementById('chaserTactic').value = String(t.chasers);
+}
+
+function selectTeam(side, n) {
+  selectedTeams[side] = Math.max(0, Math.min(TEAM_DEFS.length - 1, n));
+  selectedFormation[side] = TEAM_DEFS[selectedTeams[side]].formation;
+  tacticOverride[side] = null;
+  syncTeamPanel();
+}
+
+function initTeamUi() {
+  for (const id of ['homeTeam', 'awayTeam']) {
+    const el = document.getElementById(id);
+    for (let i = 0; i < TEAM_DEFS.length; i++) {
+      const o = document.createElement('option');
+      o.value = String(i); o.textContent = `${TEAM_DEFS[i].name} ${ratingBars(TEAM_DEFS[i])}`;
+      el.appendChild(o);
+    }
+  }
+  const formation = document.getElementById('formationPick');
+  for (const name of Object.keys(FORMATIONS)) {
+    const o = document.createElement('option'); o.value = name; o.textContent = name;
+    formation.appendChild(o);
+  }
+  document.getElementById('homeTeam').addEventListener('change', e => selectTeam(0, +e.target.value));
+  document.getElementById('awayTeam').addEventListener('change', e => selectTeam(1, +e.target.value));
+  formation.addEventListener('change', e => { selectedFormation[0] = e.target.value; });
+  for (const id of ['lineTactic','pressTactic','widthTactic','chaserTactic']) {
+    document.getElementById(id).addEventListener('input', () => {
+      tacticOverride[0] = {
+        line:+document.getElementById('lineTactic').value / 100,
+        press:+document.getElementById('pressTactic').value / 100,
+        width:+document.getElementById('widthTactic').value / 100,
+        chasers:+document.getElementById('chaserTactic').value
+      };
+    });
+  }
+  syncTeamPanel();
+}
+
 // ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
   ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 스루패스, 스틱을 끝까지 밀면 스프린트입니다.'
@@ -1440,6 +1639,7 @@ document.getElementById('btn2p').addEventListener('click', () => {
 });
 
 document.getElementById('howto').innerHTML = HOWTO;
+initTeamUi();
 let savedLvl = 1;
 try { savedLvl = Math.min(2, Math.max(0, +localStorage.getItem(KEY + '.lvl') || 1)); } catch {}
 selectLevel(savedLvl);
