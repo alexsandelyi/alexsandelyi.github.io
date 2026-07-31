@@ -10,24 +10,30 @@
 //   node tools/soccer-sim.js -n 200       # 200경기 (밸런스 변경 시 권장)
 //   node tools/soccer-sim.js -l 1         # 보통 난이도만
 //   node tools/soccer-sim.js --seed 7
+//   node tools/soccer-sim.js --sweep-speed # 보통 speed 0.84~0.94, 각 200경기
 //
 // Node 내장 모듈만 쓴다 (게임과 같은 무의존 원칙).
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const vm = require('vm');
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
 const GAME = path.join(__dirname, '..', 'games', 'soccer', 'index.html');
 // 쉬움 / 보통 / 어려움 목표 승률(%).
 // 쉬움은 원래 73% 였으나 2026-07-31 실측 81.5% 를 목표로 인정해 80% 로
-// 고쳤다 — 봇은 사람의 하한이라 사람은 이보다 더 이기고, 쉬움은 처음
-// 잡는 사람이 이기라고 있는 난이도다. games/soccer/balance.md 참조.
+// 고쳤다. 이는 쉬움의 제품 목표이며 봇 측정값을 사람 승률로 해석하지 않는다.
+// games/soccer/balance.md 참조.
 const TARGET_WIN = [80, 53, 23];
 const TARGET_GOALS = [5, 6];            // 경기당 총 득점 목표 범위
+const LEVEL_NAMES = ['쉬움', '보통', '어려움'];
+const SWEEP_SPEEDS = Array.from({ length:11 }, (_, i) => (84 + i) / 100);
 
 // ── 인자 ────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const o = { n: 30, seed: 1, levels: [0, 1, 2], botLevel: 1 };
+  const o = { n:null, seed:1, levels:[0, 1, 2], botLevel:1, sweepSpeed:false };
+  let levelSet = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => {
@@ -37,15 +43,22 @@ function parseArgs(argv) {
     };
     if (a === '-n' || a === '--matches') o.n = +next();
     else if (a === '--seed') o.seed = +next();
-    else if (a === '-l' || a === '--level') o.levels = [+next()];
+    else if (a === '-l' || a === '--level') { o.levels = [+next()]; levelSet = true; }
     else if (a === '--bot') o.botLevel = +next();
+    else if (a === '--sweep-speed') o.sweepSpeed = true;
     else if (a === '-h' || a === '--help') o.help = true;
     else throw new Error(`알 수 없는 인자: ${a}`);
   }
-  if (!(o.n > 0)) throw new Error('-n 은 1 이상이어야 합니다');
+  if (o.n === null) o.n = o.sweepSpeed ? 200 : 30;
+  if (!Number.isInteger(o.n) || o.n < 1) throw new Error('-n 은 1 이상의 정수여야 합니다');
+  if (!Number.isInteger(o.seed)) throw new Error('--seed 는 정수여야 합니다');
   for (const l of o.levels) {
-    if (!(l >= 0 && l <= 2)) throw new Error('-l 은 0~2 여야 합니다');
+    if (!Number.isInteger(l) || l < 0 || l > 2) throw new Error('-l 은 0~2 정수여야 합니다');
   }
+  if (!Number.isInteger(o.botLevel) || o.botLevel < 0 || o.botLevel > 2) {
+    throw new Error('--bot 은 0~2 정수여야 합니다');
+  }
+  if (o.sweepSpeed && levelSet) throw new Error('--sweep-speed 와 -l 은 함께 쓸 수 없습니다');
   return o;
 }
 
@@ -55,6 +68,8 @@ const HELP = `동네 축구 밸런스 측정
   -l, --level <0|1|2>  한 난이도만 측정 (0=쉬움, 1=보통, 2=어려움)
       --seed <정수>    난수 시드 (기본 1). 같은 시드면 결과가 재현된다
       --bot <0|1|2>    사람 자리를 대신하는 봇의 수준 (기본 1=보통)
+      --sweep-speed    보통 speed 0.84~0.94를 0.01 간격으로 측정
+                       기본 경기 수는 속도값당 200 (-n으로 변경 가능)
   -h, --help           이 도움말
 `;
 
@@ -171,6 +186,7 @@ const HARNESS = `
 
   __sim = {
     setBotLevel: function (n) { botLevel = n; },
+    setLevelSpeed: function (n, speed) { LEVELS[n].speed = speed; },
     run: function (lvl) {
       level = lvl;
       startMatch('1p');
@@ -185,7 +201,8 @@ const HARNESS = `
       return { gf: score[0], ga: score[1], steps: steps };
     },
     matchSec: MATCH_SEC,
-    levelNames: LEVELS.map(function (l) { return l.name; })
+    levelNames: LEVELS.map(function (l) { return l.name; }),
+    levelSpeeds: LEVELS.map(function (l) { return l.speed; })
   };
 })();
 `;
@@ -204,75 +221,103 @@ function wilson(k, n, z = 1.96) {
 const pct = (x) => (x * 100).toFixed(1).padStart(5);
 
 // ── 실행 ────────────────────────────────────────────────────────────
-function main() {
-  let opt;
-  try {
-    opt = parseArgs(process.argv.slice(2));
-  } catch (e) {
-    console.error(String(e.message) + '\n\n' + HELP);
-    process.exit(2);
-  }
-  if (opt.help) { process.stdout.write(HELP); return; }
-
+function createSimulation(seed) {
   const src = readGameSource();
-  const sandbox = makeSandbox(mulberry32(opt.seed));
+  const sandbox = makeSandbox(mulberry32(seed));
   const context = vm.createContext(sandbox);
 
   // Math.random 은 게임 소스가 로드되는 시점(buildTeams)부터 쓰이므로
   // 앞에서 먼저 갈아끼운다.
   const full = 'Math.random = __rand;\n' + src + '\n' + HARNESS;
-  try {
-    vm.runInContext(full, context, { filename: 'soccer.js' });
-  } catch (e) {
-    console.error('게임 스크립트 실행 실패:', e && e.stack || e);
-    process.exit(1);
+  vm.runInContext(full, context, { filename:'soccer.js' });
+  return sandbox.__sim;
+}
+
+function runBatch(job) {
+  const sim = createSimulation(job.seed);
+  sim.setBotLevel(job.botLevel);
+  if (job.speed !== undefined) sim.setLevelSpeed(job.lvl, job.speed);
+
+  let w = 0, d = 0, l = 0, gf = 0, ga = 0;
+  const t0 = Date.now();
+  for (let i = 0; i < job.n; i++) {
+    const r = sim.run(job.lvl);
+    gf += r.gf; ga += r.ga;
+    if (r.gf > r.ga) w++; else if (r.gf === r.ga) d++; else l++;
   }
+  return {
+    lvl:job.lvl, speed:job.speed, w, d, l, gf, ga, n:job.n,
+    matchSec:sim.matchSec, secs:(Date.now() - t0) / 1000
+  };
+}
 
-  const sim = sandbox.__sim;
-  const names = sim.levelNames;
+function runWorker(job) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(__filename, { workerData:{ kind:'batch', job } });
+    let settled = false;
+    worker.once('message', message => {
+      settled = true;
+      if (message.ok) resolve(message.row);
+      else reject(new Error(message.error));
+    });
+    worker.once('error', error => {
+      settled = true;
+      reject(error);
+    });
+    worker.once('exit', code => {
+      if (!settled) reject(new Error(`측정 작업이 결과 없이 종료 코드 ${code}로 끝났습니다`));
+    });
+  });
+}
 
-  console.log(`동네 축구 밸런스 측정`);
-  console.log(`  경기 수  난이도당 ${opt.n}`);
-  console.log(`  시드     ${opt.seed}`);
-  console.log(`  사람 자리 봇  ${names[opt.botLevel]} 수준`);
-  console.log(`  경기 길이 ${sim.matchSec}초\n`);
-
-  const rows = [];
-  for (const lvl of opt.levels) {
-    let w = 0, d = 0, l = 0, gf = 0, ga = 0;
-    const t0 = Date.now();
-    for (let i = 0; i < opt.n; i++) {
-      const r = sim.run(lvl);
-      gf += r.gf; ga += r.ga;
-      if (r.gf > r.ga) w++; else if (r.gf === r.ga) d++; else l++;
-      if ((i + 1) % 10 === 0 || i + 1 === opt.n) {
-        process.stdout.write(`\r  ${names[lvl]} ${i + 1}/${opt.n}   `);
-      }
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function runner() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
     }
-    const secs = ((Date.now() - t0) / 1000).toFixed(1);
-    process.stdout.write(`\r  ${names[lvl]} ${opt.n}경기 완료 (${secs}초)\n`);
-    rows.push({ lvl, w, d, l, gf, ga, n: opt.n });
   }
+  const count = Math.min(items.length, Math.max(1, limit));
+  await Promise.all(Array.from({ length:count }, runner));
+  return results;
+}
 
+function workerLimit(count) {
+  return Math.min(count, Math.max(1, os.availableParallelism() - 1));
+}
+
+async function runJobs(jobs, onDone) {
+  let done = 0;
+  return mapLimit(jobs, workerLimit(jobs.length), async job => {
+    const row = await runWorker(job);
+    done++;
+    onDone(row, done, jobs.length);
+    return row;
+  });
+}
+
+function printNormalResults(rows) {
   console.log('\n난이도  승  무  패   승률(95% CI)          득점  실점  총득점/경기  목표');
   console.log('─'.repeat(76));
   for (const r of rows) {
     const [lo, hi] = wilson(r.w, r.n);
     const total = (r.gf + r.ga) / r.n;
-    const win = r.w / r.n;
     const target = TARGET_WIN[r.lvl];
     const hit = target / 100 >= lo && target / 100 <= hi ? '충족' : '벗어남';
     console.log(
-      `${names[r.lvl].padEnd(4)}  ` +
+      `${LEVEL_NAMES[r.lvl].padEnd(4)}  ` +
       `${String(r.w).padStart(3)} ${String(r.d).padStart(3)} ${String(r.l).padStart(3)}   ` +
-      `${pct(win)}% (${pct(lo)}~${pct(hi)}%)  ` +
+      `${pct(r.w / r.n)}% (${pct(lo)}~${pct(hi)}%)  ` +
       `${(r.gf / r.n).toFixed(2).padStart(5)} ${(r.ga / r.n).toFixed(2).padStart(5)}  ` +
       `${total.toFixed(2).padStart(10)}  ` +
       `${String(target).padStart(3)}% ${hit}`
     );
   }
 
-  const allGoals = rows.reduce((s, r) => s + (r.gf + r.ga), 0) /
+  const allGoals = rows.reduce((s, r) => s + r.gf + r.ga, 0) /
                    rows.reduce((s, r) => s + r.n, 0);
   console.log('─'.repeat(76));
   console.log(
@@ -292,4 +337,94 @@ function main() {
   }
 }
 
-main();
+function printSweepResults(rows) {
+  console.log('\nspeed   승  무  패   승률(95% CI)          득점  실점  총득점/경기');
+  console.log('─'.repeat(72));
+  for (const r of rows) {
+    const [lo, hi] = wilson(r.w, r.n);
+    const total = (r.gf + r.ga) / r.n;
+    console.log(
+      `${r.speed.toFixed(2)}  ` +
+      `${String(r.w).padStart(3)} ${String(r.d).padStart(3)} ${String(r.l).padStart(3)}   ` +
+      `${pct(r.w / r.n)}% (${pct(lo)}~${pct(hi)}%)  ` +
+      `${(r.gf / r.n).toFixed(2).padStart(5)} ${(r.ga / r.n).toFixed(2).padStart(5)}  ` +
+      `${total.toFixed(2).padStart(10)}`
+    );
+  }
+  console.log('─'.repeat(72));
+
+  let steepest = null;
+  for (let i = 1; i < rows.length; i++) {
+    const delta = rows[i].w / rows[i].n - rows[i - 1].w / rows[i - 1].n;
+    if (!steepest || Math.abs(delta) > Math.abs(steepest.delta)) {
+      steepest = { from:rows[i - 1].speed, to:rows[i].speed, delta };
+    }
+  }
+  if (steepest) {
+    console.log(
+      `가장 큰 인접 변화 ${steepest.from.toFixed(2)}→${steepest.to.toFixed(2)}: ` +
+      `${(steepest.delta * 100).toFixed(1)}%p`
+    );
+  }
+}
+
+async function main() {
+  let opt;
+  try {
+    opt = parseArgs(process.argv.slice(2));
+  } catch (e) {
+    console.error(String(e.message) + '\n\n' + HELP);
+    process.exitCode = 2;
+    return;
+  }
+  if (opt.help) { process.stdout.write(HELP); return; }
+
+  if (opt.sweepSpeed) {
+    console.log('동네 축구 speed 스윕');
+    console.log(`  경기 수  speed 값당 ${opt.n}`);
+    console.log(`  시드     ${opt.seed} (각 speed 에서 같은 난수열로 초기화)`);
+    console.log(`  사람 자리 봇  ${LEVEL_NAMES[opt.botLevel]} 수준`);
+    console.log(`  병렬 작업 ${workerLimit(SWEEP_SPEEDS.length)}개`);
+    const jobs = SWEEP_SPEEDS.map(speed => ({
+      lvl:1, speed, n:opt.n, seed:opt.seed, botLevel:opt.botLevel
+    }));
+    const rows = await runJobs(jobs, (row, done, total) => {
+      console.log(
+        `  [${done}/${total}] speed ${row.speed.toFixed(2)} 완료 ` +
+        `(${row.secs.toFixed(1)}초)`
+      );
+    });
+    printSweepResults(rows);
+    return;
+  }
+
+  console.log('동네 축구 밸런스 측정');
+  console.log(`  경기 수  난이도당 ${opt.n}`);
+  console.log(`  시드     ${opt.seed} (각 난이도에서 같은 난수열로 초기화)`);
+  console.log(`  사람 자리 봇  ${LEVEL_NAMES[opt.botLevel]} 수준`);
+  console.log(`  병렬 작업 ${workerLimit(opt.levels.length)}개`);
+  const jobs = opt.levels.map(lvl => ({
+    lvl, n:opt.n, seed:opt.seed, botLevel:opt.botLevel
+  }));
+  const rows = await runJobs(jobs, (row, done, total) => {
+    console.log(
+      `  [${done}/${total}] ${LEVEL_NAMES[row.lvl]} ${row.n}경기 완료 ` +
+      `(${row.secs.toFixed(1)}초)`
+    );
+  });
+  console.log(`  경기 길이 ${rows[0].matchSec}초`);
+  printNormalResults(rows);
+}
+
+if (isMainThread) {
+  main().catch(error => {
+    console.error('측정 실패:', error && error.stack || error);
+    process.exitCode = 1;
+  });
+} else if (workerData && workerData.kind === 'batch') {
+  try {
+    parentPort.postMessage({ ok:true, row:runBatch(workerData.job) });
+  } catch (error) {
+    parentPort.postMessage({ ok:false, error:String(error && error.stack || error) });
+  }
+}
