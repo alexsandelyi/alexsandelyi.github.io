@@ -75,6 +75,12 @@
     border:1px solid var(--border-subtle); border-radius:7px; padding:7px;
   }
   .rating { grid-column:1/-1; color:var(--gold); text-align:center; min-height:18px; }
+  .modeInfo {
+    width:min(430px,100%); color:var(--text-body); font-size:13px;
+    line-height:1.65; white-space:pre-line;
+  }
+  .pkRow button { min-width:84px; }
+  [hidden] { display:none !important; }
   details.tactics {
     width:min(390px,100%); border:1px solid var(--border-subtle);
     border-radius:9px; padding:7px 10px; color:var(--text-muted); font-size:12px;
@@ -155,10 +161,20 @@
         <select id="chaserTactic"><option value="1">1명</option><option value="2">2명</option></select>
       </div>
     </details>
-    <div class="btnrow">
+    <div class="btnrow" id="quickRow">
       <button id="btn1p">AI와 대전</button>
       <button id="btn2p" class="ghost">2인 대전</button>
     </div>
+    <div class="btnrow" id="modeRow">
+      <button id="btnTournament" class="ghost">8팀 토너먼트</button>
+      <button id="btnCancelCompetition" class="ghost" hidden>진행 포기</button>
+    </div>
+    <div class="btnrow pkRow" id="pkRow" hidden>
+      <button data-pk="0" class="ghost">왼쪽</button>
+      <button data-pk="1" class="ghost">가운데</button>
+      <button data-pk="2" class="ghost">오른쪽</button>
+    </div>
+    <div class="modeInfo" id="modeInfo"></div>
     <div class="best" id="best"></div>
   </div>
 </div>
@@ -372,6 +388,7 @@ let mode = '1p', state = 'title';
 let clock = MATCH_SEC / 2, goalTimer = 0, lastScorer = -1;
 let half = 1, addedBank = 0, inAdded = false, setpiece = null;
 let offside = null, notice = { text:'', timer:0, color:'#F2CE7A' };
+let competition = null, shootout = null, saveData = null;
 const score = [0, 0];
 const matchStats = {
   shots:[0,0], onTarget:[0,0], possession:[0,0], corners:[0,0],
@@ -423,6 +440,29 @@ const TEAM_DEFS = [
   {id:'roof',name:'옥상 시티',formation:'4-3-3',stats:{speed:72,shot:75,pass:69,defense:52,stamina:58,keeping:51},tactics:{line:.68,press:.52,width:.40,chasers:2}},
   {id:'bolt',name:'번개 클럽',formation:'3-5-2',stats:{speed:84,shot:78,pass:73,defense:70,stamina:80,keeping:75},tactics:{line:.63,press:.50,width:.34,chasers:2}}
 ];
+
+function shuffledOpponents(home, random = Math.random) {
+  const a = TEAM_DEFS.map((_, i) => i).filter(i => i !== home);
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, 3);
+}
+
+function createTournament(home, random = Math.random) {
+  return {
+    type:'tournament', userTeam:home, round:0,
+    opponents:shuffledOpponents(home, random), history:[], shootout:null
+  };
+}
+
+function penaltyFinished(pk) {
+  const played = pk.shots[0];
+  if (played < 5)
+    return Math.abs(pk.scored[0] - pk.scored[1]) > 5 - played;
+  return pk.scored[0] !== pk.scored[1];
+}
 const selectedTeams = [0, 0];
 const selectedFormation = ['4-4-2', '4-4-2'];
 const tacticOverride = [null, null];
@@ -525,6 +565,147 @@ function startMatch(m) {
   document.getElementById('nameAway').textContent = TEAM_DEFS[selectedTeams[1]].name;
   document.getElementById('nameHome').textContent = TEAM_DEFS[selectedTeams[0]].name;
   syncHud();
+}
+
+function setConfigVisible(show) {
+  for (const id of ['levelRow','lengthRow','teamSetup','tacticsPanel','quickRow'])
+    document.getElementById(id).hidden = !show;
+  document.getElementById('modeRow').hidden = false;
+  document.getElementById('pkRow').hidden = true;
+}
+
+function tournamentText() {
+  if (!competition) return '';
+  const lines = competition.history.map((h, i) =>
+    `${i + 1}R ${TEAM_DEFS[h.away].name} ${h.result}`);
+  const next = competition.opponents[competition.round];
+  if (next != null) lines.push(`${competition.round + 1}R 상대: ${TEAM_DEFS[next].name}`);
+  return lines.join('\n');
+}
+
+function showTournamentReady() {
+  state = 'title';
+  const ov = document.getElementById('overlay');
+  const finalRound = competition.round === 2;
+  ov.querySelector('h1').textContent = finalRound ? '토너먼트 결승' :
+    `토너먼트 ${competition.round + 1}라운드`;
+  document.getElementById('howto').textContent =
+    `${TEAM_DEFS[competition.userTeam].name}의 8팀 녹아웃. 무승부는 승부차기로 결정합니다.`;
+  document.getElementById('modeInfo').textContent = tournamentText();
+  setConfigVisible(false);
+  const b = document.getElementById('btnTournament');
+  b.textContent = competition.round ? '다음 경기' : '토너먼트 시작';
+  document.getElementById('btnCancelCompetition').hidden = false;
+  ov.classList.remove('hidden');
+}
+
+function startTournament() {
+  competition = createTournament(selectedTeams[0]);
+  selectedTeams[1] = competition.opponents[0];
+  selectedFormation[1] = TEAM_DEFS[selectedTeams[1]].formation;
+  saveGame();
+  showTournamentReady();
+}
+
+function startTournamentMatch() {
+  const away = competition.opponents[competition.round];
+  selectedTeams[0] = competition.userTeam;
+  selectedTeams[1] = away;
+  selectedFormation[1] = TEAM_DEFS[away].formation;
+  tacticOverride[1] = null;
+  saveGame();
+  startMatch('1p');
+}
+
+function beginShootout() {
+  state = 'shootout';
+  shootout = { shots:[0,0], scored:[0,0], rounds:[] };
+  competition.shootout = shootout;
+  showShootoutScreen();
+  saveGame();
+}
+
+function showShootoutScreen() {
+  state = 'shootout';
+  const ov = document.getElementById('overlay');
+  ov.querySelector('h1').textContent = '승부차기';
+  document.getElementById('howto').textContent =
+    '찰 방향을 고르세요. 5번씩 찬 뒤 동률이면 서든데스입니다.';
+  setConfigVisible(false);
+  document.getElementById('modeRow').hidden = true;
+  document.getElementById('pkRow').hidden = false;
+  updateShootoutText();
+  ov.classList.remove('hidden');
+}
+
+function penaltyGoal(shooter, keeper, guessed) {
+  const shot = TEAM_DEFS[shooter].stats.shot;
+  const keeping = TEAM_DEFS[keeper].stats.keeping;
+  const chance = Math.max(.52, Math.min(.88, .72 + (shot - keeping) / 250));
+  return Math.random() < chance * (guessed ? .46 : 1);
+}
+
+function updateShootoutText(last = '') {
+  const sudden = shootout.shots[0] >= 5 ? ' · 서든데스' : '';
+  document.getElementById('modeInfo').textContent =
+    `${TEAM_DEFS[selectedTeams[0]].name} ${shootout.scored[0]} : ` +
+    `${shootout.scored[1]} ${TEAM_DEFS[selectedTeams[1]].name}\n` +
+    `${shootout.shots[0]}번째 킥${sudden}${last ? `\n${last}` : ''}`;
+}
+
+function takePenaltyRound(dir) {
+  if (state !== 'shootout' || !shootout) return;
+  const awayDir = Math.floor(Math.random() * 3);
+  const awayKeeper = Math.floor(Math.random() * 3);
+  const homeKeeper = Math.floor(Math.random() * 3);
+  const hg = penaltyGoal(selectedTeams[0], selectedTeams[1], dir === awayKeeper);
+  const ag = penaltyGoal(selectedTeams[1], selectedTeams[0], awayDir === homeKeeper);
+  shootout.shots[0]++; shootout.shots[1]++;
+  if (hg) shootout.scored[0]++;
+  if (ag) shootout.scored[1]++;
+  shootout.rounds.push([hg ? 1 : 0, ag ? 1 : 0]);
+  updateShootoutText(`우리 ${hg ? '성공' : '실패'} · 상대 ${ag ? '성공' : '실패'}`);
+  saveGame();
+  if (penaltyFinished(shootout)) {
+    const won = shootout.scored[0] > shootout.scored[1];
+    setTimeout(() => finishTournamentMatch(won,
+      `승부차기 ${shootout.scored[0]}:${shootout.scored[1]}`), 450);
+  }
+}
+
+function finishTournamentMatch(won, result = `${score[0]}:${score[1]}`) {
+  const away = selectedTeams[1];
+  competition.history.push({ away, result, won });
+  competition.shootout = null; shootout = null;
+  const ov = document.getElementById('overlay');
+  if (!won) {
+    const summary = tournamentText();
+    competition = null; saveGame();
+    state = 'end'; setConfigVisible(false);
+    ov.querySelector('h1').textContent = '토너먼트 탈락';
+    document.getElementById('howto').textContent = result;
+    document.getElementById('modeInfo').textContent = summary;
+    document.getElementById('btnTournament').textContent = '새 토너먼트';
+    document.getElementById('btnCancelCompetition').hidden = true;
+    ov.classList.remove('hidden');
+    return;
+  }
+  competition.round++;
+  if (competition.round >= 3) {
+    const summary = tournamentText();
+    competition = null; saveGame();
+    state = 'end'; setConfigVisible(false);
+    ov.querySelector('h1').textContent = '토너먼트 우승!';
+    document.getElementById('howto').textContent = '3라운드를 모두 이겼습니다.';
+    document.getElementById('modeInfo').textContent = summary;
+    document.getElementById('btnTournament').textContent = '새 토너먼트';
+    document.getElementById('btnCancelCompetition').hidden = true;
+    ov.classList.remove('hidden');
+    return;
+  }
+  selectedTeams[1] = competition.opponents[competition.round];
+  saveGame();
+  showTournamentReady();
 }
 
 function beginAction(teamIdx) {
@@ -1319,6 +1500,12 @@ function step(dt) {
 
 function endMatch() {
   state = 'end';
+  if (mode === '1p') saveBest(score[0] - score[1]);
+  if (competition && competition.type === 'tournament') {
+    if (score[0] === score[1]) { beginShootout(); return; }
+    finishTournamentMatch(score[0] > score[1]);
+    return;
+  }
   const ov = document.getElementById('overlay');
   const win = score[0] > score[1] ? '승리' : score[0] < score[1] ? '패배' : '무승부';
   ov.querySelector('h1').textContent = `${win}  ${score[0]} : ${score[1]}`;
@@ -1329,7 +1516,6 @@ function endMatch() {
   document.getElementById('levelRow').style.display = mode === '1p' ? '' : 'none';
   document.getElementById('lengthRow').style.display = '';
   ov.classList.remove('hidden');
-  if (mode === '1p') saveBest(score[0] - score[1]);
   showBest();
 }
 
@@ -1529,16 +1715,64 @@ function syncClock() {
     (inAdded ? '+' : '');
 }
 
-const KEY = 'ilbbang.soccer11.v1';
+const OLD_KEY = 'ilbbang.soccer11.v1';
+const SAVE_KEY = 'ilbbang.soccer11.v2';
+function emptyRecord() { return { w:0, d:0, l:0, bestGd:0 }; }
+function defaultSave() {
+  return {
+    version:2,
+    settings:{ level:1, matchSec:180, teams:[0,0], formation:'4-4-2', tactics:null },
+    records:{ 0:emptyRecord(), 1:emptyRecord(), 2:emptyRecord() },
+    progress:null
+  };
+}
+
+function loadSaveData() {
+  let data = null;
+  try { data = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch {}
+  const hadV2 = !!data && data.version === 2;
+  if (!hadV2) data = defaultSave();
+  data.settings = Object.assign(defaultSave().settings, data.settings || {});
+  data.records = data.records || {};
+  for (let i = 0; i < 3; i++) {
+    if (!hadV2 || !data.records[i]) {
+      try {
+        data.records[i] = JSON.parse(localStorage.getItem(OLD_KEY + '.rec' + i)) ||
+          emptyRecord();
+      } catch { data.records[i] = emptyRecord(); }
+    }
+  }
+  try {
+    if (!hadV2) {
+      const oldLevel = +localStorage.getItem(OLD_KEY + '.lvl');
+      const oldSec = +localStorage.getItem(OLD_KEY + '.matchSec');
+      if (Number.isInteger(oldLevel) && oldLevel >= 0 && oldLevel <= 2)
+        data.settings.level = oldLevel;
+      if ([180,360,600].includes(oldSec)) data.settings.matchSec = oldSec;
+    }
+  } catch {}
+  return data;
+}
+
+function saveGame() {
+  if (!saveData) return;
+  saveData.settings = {
+    level, matchSec:MATCH_SEC, teams:selectedTeams.slice(),
+    formation:selectedFormation[0],
+    tactics:tacticOverride[0] ? Object.assign({}, tacticOverride[0]) : null
+  };
+  saveData.progress = competition ? JSON.parse(JSON.stringify(competition)) : null;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveData)); } catch {}
+}
+
 function loadRec(n = level) {
-  try { return JSON.parse(localStorage.getItem(KEY + '.rec' + n)) || { w:0, d:0, l:0, bestGd:0 }; }
-  catch { return { w:0, d:0, l:0, bestGd:0 }; }
+  return saveData && saveData.records[n] ? saveData.records[n] : emptyRecord();
 }
 function saveBest(gd) {
   const r = loadRec();
   if (gd > 0) r.w++; else if (gd === 0) r.d++; else r.l++;
   if (gd > r.bestGd) r.bestGd = gd;
-  try { localStorage.setItem(KEY + '.rec' + level, JSON.stringify(r)); } catch {}
+  saveGame();
 }
 function showBest() {
   const r = loadRec();
@@ -1548,7 +1782,7 @@ function showBest() {
 function selectLevel(n) {
   level = n;
   for (const b of document.querySelectorAll('.lvl')) b.classList.toggle('sel', +b.dataset.lvl === n);
-  try { localStorage.setItem(KEY + '.lvl', String(n)); } catch {}
+  saveGame();
   showBest();
 }
 
@@ -1556,7 +1790,7 @@ function selectLength(sec) {
   MATCH_SEC = sec;
   for (const b of document.querySelectorAll('.len'))
     b.classList.toggle('sel', +b.dataset.sec === sec);
-  try { localStorage.setItem(KEY + '.matchSec', String(sec)); } catch {}
+  saveGame();
   if (state === 'title') { clock = MATCH_SEC / 2; half = 1; syncClock(); }
 }
 
@@ -1579,6 +1813,7 @@ function selectTeam(side, n) {
   selectedFormation[side] = TEAM_DEFS[selectedTeams[side]].formation;
   tacticOverride[side] = null;
   syncTeamPanel();
+  saveGame();
 }
 
 function initTeamUi() {
@@ -1597,7 +1832,9 @@ function initTeamUi() {
   }
   document.getElementById('homeTeam').addEventListener('change', e => selectTeam(0, +e.target.value));
   document.getElementById('awayTeam').addEventListener('change', e => selectTeam(1, +e.target.value));
-  formation.addEventListener('change', e => { selectedFormation[0] = e.target.value; });
+  formation.addEventListener('change', e => {
+    selectedFormation[0] = e.target.value; saveGame();
+  });
   for (const id of ['lineTactic','pressTactic','widthTactic','chaserTactic']) {
     document.getElementById(id).addEventListener('input', () => {
       tacticOverride[0] = {
@@ -1606,6 +1843,7 @@ function initTeamUi() {
         width:+document.getElementById('widthTactic').value / 100,
         chasers:+document.getElementById('chaserTactic').value
       };
+      saveGame();
     });
   }
   syncTeamPanel();
@@ -1623,8 +1861,11 @@ function showTitle() {
   document.getElementById('howto').innerHTML = HOWTO;
   document.getElementById('btn1p').textContent = 'AI와 대전';
   document.getElementById('btn2p').textContent = '2인 대전';
-  document.getElementById('levelRow').style.display = '';
-  document.getElementById('lengthRow').style.display = '';
+  setConfigVisible(true);
+  document.getElementById('modeInfo').textContent = '';
+  document.getElementById('btnTournament').textContent =
+    competition ? '토너먼트 이어하기' : '8팀 토너먼트';
+  document.getElementById('btnCancelCompetition').hidden = !competition;
   ov.classList.remove('hidden');
   showBest();
 }
@@ -1637,18 +1878,41 @@ document.getElementById('btn1p').addEventListener('click', () => startMatch('1p'
 document.getElementById('btn2p').addEventListener('click', () => {
   if (state === 'end') showTitle(); else startMatch('2p');
 });
+document.getElementById('btnTournament').addEventListener('click', () => {
+  if (!competition) startTournament();
+  else if (competition.shootout) {
+    shootout = competition.shootout; showShootoutScreen();
+  } else startTournamentMatch();
+});
+document.getElementById('btnCancelCompetition').addEventListener('click', () => {
+  competition = null; shootout = null; saveGame(); showTitle();
+});
+for (const b of document.querySelectorAll('[data-pk]'))
+  b.addEventListener('click', () => takePenaltyRound(+b.dataset.pk));
 
 document.getElementById('howto').innerHTML = HOWTO;
+saveData = loadSaveData();
+const settings = saveData.settings;
+competition = saveData.progress && saveData.progress.type === 'tournament'
+  ? saveData.progress : null;
+selectedTeams[0] = Math.max(0, Math.min(TEAM_DEFS.length - 1, +(settings.teams || [0])[0] || 0));
+selectedTeams[1] = Math.max(0, Math.min(TEAM_DEFS.length - 1, +(settings.teams || [0,0])[1] || 0));
+selectedFormation[0] = FORMATIONS[settings.formation]
+  ? settings.formation : TEAM_DEFS[selectedTeams[0]].formation;
+selectedFormation[1] = TEAM_DEFS[selectedTeams[1]].formation;
+tacticOverride[0] = settings.tactics || null;
+if (competition) {
+  selectedTeams[0] = competition.userTeam;
+  selectedTeams[1] = competition.opponents[competition.round] ?? 0;
+  selectedFormation[1] = TEAM_DEFS[selectedTeams[1]].formation;
+  shootout = competition.shootout || null;
+}
 initTeamUi();
-let savedLvl = 1;
-try { savedLvl = Math.min(2, Math.max(0, +localStorage.getItem(KEY + '.lvl') || 1)); } catch {}
-selectLevel(savedLvl);
-let savedSec = 180;
-try {
-  const n = +localStorage.getItem(KEY + '.matchSec');
-  if ([180, 360, 600].includes(n)) savedSec = n;
-} catch {}
-selectLength(savedSec);
+selectLevel(Math.min(2, Math.max(0, +settings.level || 1)));
+selectLength([180,360,600].includes(+settings.matchSec) ? +settings.matchSec : 180);
+if (competition) {
+  if (shootout) showShootoutScreen(); else showTournamentReady();
+}
 
 resize();
 buildTeams();

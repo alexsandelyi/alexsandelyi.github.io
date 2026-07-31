@@ -297,9 +297,24 @@ const HARNESS = `
       });
       var ratingsOrdered = teamRating(TEAM_DEFS[7]) > teamRating(TEAM_DEFS[0]) &&
                            teamRating(TEAM_DEFS[0]) > teamRating(TEAM_DEFS[5]);
+      var tournament = createTournament(0, function () { return 0; });
+      var tournamentValid = tournament.opponents.length === 3 &&
+        new Set(tournament.opponents).size === 3 &&
+        tournament.opponents.every(function (n) { return n !== 0; });
+      var shootoutRules = penaltyFinished({ shots:[3,3], scored:[3,0] }) &&
+        !penaltyFinished({ shots:[5,5], scored:[4,4] }) &&
+        penaltyFinished({ shots:[6,6], scored:[5,4] });
+      localStorage.removeItem(SAVE_KEY);
+      localStorage.setItem(OLD_KEY + '.rec1',
+        JSON.stringify({ w:7, d:2, l:3, bestGd:4 }));
+      var migrated = loadSaveData();
+      var storageMigrated = migrated.version === 2 &&
+        migrated.records[1].w === 7 && migrated.records[1].bestGd === 4;
       return {
         offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
-        formationsValid:formationsValid, ratingsOrdered:ratingsOrdered
+        formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
+        tournamentValid:tournamentValid, shootoutRules:shootoutRules,
+        storageMigrated:storageMigrated
       };
     }
   };
