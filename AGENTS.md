@@ -49,6 +49,7 @@
 | `app-ads.txt` | AdMob 인증 파일. 루트 위치를 유지하며 삭제 금지 |
 | `games/soccer/` | 의존성 없는 Canvas 2D 축구 게임 |
 | `games/soccer/*.md` | 설계 문서. 목차는 `README.md`, 작성 규칙은 `games/soccer/AGENTS.md` |
+| `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정. 사이트 동작과 무관 |
 | `tmp/` | 재적용 가능한 패치와 임시 추출물. Git 추적 제외 |
 | `.nojekyll` | GitHub Pages에 필요. 삭제 금지 |
 
