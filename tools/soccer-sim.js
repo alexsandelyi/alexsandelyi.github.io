@@ -310,11 +310,58 @@ const HARNESS = `
       var migrated = loadSaveData();
       var storageMigrated = migrated.version === 2 &&
         migrated.records[1].w === 7 && migrated.records[1].bestGd === 4;
+      var rounds = makeLeagueRounds(8), pairCounts = {};
+      rounds.forEach(function (fixtures) {
+        fixtures.forEach(function (pair) {
+          var key = pair.slice().sort(function(a,b){ return a-b; }).join('-');
+          pairCounts[key] = (pairCounts[key] || 0) + 1;
+        });
+      });
+      var leagueSchedule = rounds.length === 14 &&
+        rounds.every(function (fixtures) {
+          return new Set([].concat.apply([], fixtures)).size === 8;
+        }) &&
+        Object.keys(pairCounts).length === 28 &&
+        Object.values(pairCounts).every(function (n) { return n === 2; });
+      var testTable = emptyTable();
+      applyTableResult(testTable, 0, 1, 2, 0);
+      applyTableResult(testTable, 2, 3, 1, 1);
+      var leagueRanking = rankedTable(testTable)[0].team === 0 &&
+        rankedTable(testTable)[1].team === 2;
+      var season = createLeague(0, 'season', 2, {league:1,cup:1});
+      var seasonValid = season.rounds.length === 14 && season.seasonNo === 2 &&
+        season.trophies.league === 1 && season.phase === 'league';
+      var leagueFlow = createLeague(0, 'league');
+      competition = leagueFlow; showLeagueReady();
+      for (var lr = 0; lr < 14; lr++) {
+        score[0] = 1; score[1] = 0; finishLeagueMatch();
+      }
+      var leagueCompleted = competition === null &&
+        leagueFlow.table.every(function (row) { return row.p === 14; });
+      var seasonFlow = createLeague(0, 'season');
+      competition = seasonFlow; showLeagueReady();
+      for (var sr = 0; sr < 14; sr++) {
+        score[0] = 1; score[1] = 0; finishLeagueMatch();
+      }
+      var seasonToCup = competition === seasonFlow &&
+        seasonFlow.phase === 'cup' && seasonFlow.cupOpponents.length === 3;
+      matchStats.possession[0] = 60; matchStats.possession[1] = 40;
+      matchStats.shots[0] = 7; matchStats.shots[1] = 5;
+      matchStats.onTarget[0] = 3; matchStats.onTarget[1] = 2;
+      matchStats.corners[0] = 4; matchStats.corners[1] = 1;
+      matchStats.fouls[0] = 2; matchStats.fouls[1] = 3;
+      matchStats.cards[0] = 1; matchStats.cards[1] = 0;
+      var summaryText = matchSummaryText();
+      var recordsSummary = summaryText.indexOf('60%') >= 0 &&
+        summaryText.indexOf('7/3') >= 0 && summaryText.indexOf('2/1') >= 0;
       return {
         offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
         formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
         tournamentValid:tournamentValid, shootoutRules:shootoutRules,
-        storageMigrated:storageMigrated
+        storageMigrated:storageMigrated, leagueSchedule:leagueSchedule,
+        leagueRanking:leagueRanking, seasonValid:seasonValid,
+        leagueCompleted:leagueCompleted, seasonToCup:seasonToCup,
+        recordsSummary:recordsSummary
       };
     }
   };

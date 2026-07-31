@@ -167,6 +167,8 @@
     </div>
     <div class="btnrow" id="modeRow">
       <button id="btnTournament" class="ghost">8팀 토너먼트</button>
+      <button id="btnLeague" class="ghost">14경기 리그</button>
+      <button id="btnSeason" class="ghost">시즌</button>
       <button id="btnCancelCompetition" class="ghost" hidden>진행 포기</button>
     </div>
     <div class="btnrow pkRow" id="pkRow" hidden>
@@ -394,7 +396,10 @@ const matchStats = {
   shots:[0,0], onTarget:[0,0], possession:[0,0], corners:[0,0],
   fouls:[0,0], cards:[0,0], offsides:[0,0], setpieces:{}, events:[]
 };
-const ball = { x:0, y:0, vx:0, vy:0, owner:null, lastTouch:null, freeCd:0 };
+const ball = {
+  x:0, y:0, vx:0, vy:0, owner:null, lastTouch:null, freeCd:0,
+  shotSide:-1, shotCounted:false
+};
 const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
 const attackDir = [1, -1];
 const ctrl = [null, null];           // 사람이 조작 중인 선수 (1P, 2P)
@@ -462,6 +467,63 @@ function penaltyFinished(pk) {
   if (played < 5)
     return Math.abs(pk.scored[0] - pk.scored[1]) > 5 - played;
   return pk.scored[0] !== pk.scored[1];
+}
+
+function makeLeagueRounds(teamCount = TEAM_DEFS.length) {
+  let ring = Array.from({length:teamCount}, (_, i) => i);
+  const first = [];
+  for (let r = 0; r < teamCount - 1; r++) {
+    const fixtures = [];
+    for (let i = 0; i < teamCount / 2; i++) {
+      const a = ring[i], b = ring[teamCount - 1 - i];
+      fixtures.push((r + i) % 2 ? [b, a] : [a, b]);
+    }
+    first.push(fixtures);
+    ring = [ring[0], ring[ring.length - 1], ...ring.slice(1, -1)];
+  }
+  return first.concat(first.map(round => round.map(([a,b]) => [b,a])));
+}
+
+function emptyTable() {
+  return TEAM_DEFS.map((_, team) => ({team,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0}));
+}
+
+function applyTableResult(table, a, b, ga, gb) {
+  const A = table[a], B = table[b];
+  A.p++; B.p++; A.gf += ga; A.ga += gb; B.gf += gb; B.ga += ga;
+  if (ga > gb) { A.w++; B.l++; A.pts += 3; }
+  else if (gb > ga) { B.w++; A.l++; B.pts += 3; }
+  else { A.d++; B.d++; A.pts++; B.pts++; }
+}
+
+function rankedTable(table) {
+  return table.slice().sort((a,b) =>
+    b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) ||
+    b.gf - a.gf || a.team - b.team);
+}
+
+function createLeague(home, type = 'league', seasonNo = 1, trophies = null) {
+  return {
+    type, phase:'league', userTeam:home, round:0,
+    rounds:makeLeagueRounds(), table:emptyTable(), history:[],
+    seasonNo, trophies:trophies || {league:0,cup:0}, shootout:null
+  };
+}
+
+function leagueUserFixture(c) {
+  return c.rounds[c.round].find(pair => pair.includes(c.userTeam));
+}
+
+function sampleGoals(strength) {
+  const lambda = Math.max(.55, Math.min(3.2, 1.65 + strength / 32));
+  let p = 1, k = 0, limit = Math.exp(-lambda);
+  do { k++; p *= Math.random(); } while (p > limit && k < 10);
+  return k - 1;
+}
+
+function simulateFixture(a, b) {
+  const diff = teamRating(TEAM_DEFS[a]) - teamRating(TEAM_DEFS[b]);
+  return [sampleGoals(diff), sampleGoals(-diff)];
 }
 const selectedTeams = [0, 0];
 const selectedFormation = ['4-4-2', '4-4-2'];
@@ -542,7 +604,8 @@ function resetPositions(kickSide) {
     }
   }
   ball.x = FW / 2; ball.y = FH / 2; ball.vx = ball.vy = 0;
-  ball.owner = ball.lastTouch = null; ball.freeCd = 0; offside = null;
+  ball.owner = ball.lastTouch = null; ball.freeCd = 0;
+  ball.shotSide = -1; ball.shotCounted = false; offside = null;
   cam.x = FW / 2; cam.y = FH / 2;
   ctrl[0] = ctrl[1] = null;
   ctrlLock[0] = ctrlLock[1] = 0;
@@ -574,6 +637,24 @@ function setConfigVisible(show) {
   document.getElementById('pkRow').hidden = true;
 }
 
+function setModeButtons(activeId, text) {
+  for (const id of ['btnTournament','btnLeague','btnSeason'])
+    document.getElementById(id).hidden = id !== activeId;
+  const active = document.getElementById(activeId);
+  active.hidden = false; active.textContent = text;
+  document.getElementById('btnCancelCompetition').hidden = false;
+}
+
+function resetModeButtons() {
+  const labels = {
+    btnTournament:'8팀 토너먼트', btnLeague:'14경기 리그', btnSeason:'시즌'
+  };
+  for (const [id, text] of Object.entries(labels)) {
+    const b = document.getElementById(id); b.hidden = false; b.textContent = text;
+  }
+  document.getElementById('btnCancelCompetition').hidden = true;
+}
+
 function tournamentText() {
   if (!competition) return '';
   const lines = competition.history.map((h, i) =>
@@ -591,11 +672,10 @@ function showTournamentReady() {
     `토너먼트 ${competition.round + 1}라운드`;
   document.getElementById('howto').textContent =
     `${TEAM_DEFS[competition.userTeam].name}의 8팀 녹아웃. 무승부는 승부차기로 결정합니다.`;
-  document.getElementById('modeInfo').textContent = tournamentText();
+  document.getElementById('modeInfo').textContent =
+    [competition.lastMatch, tournamentText()].filter(Boolean).join('\n\n');
   setConfigVisible(false);
-  const b = document.getElementById('btnTournament');
-  b.textContent = competition.round ? '다음 경기' : '토너먼트 시작';
-  document.getElementById('btnCancelCompetition').hidden = false;
+  setModeButtons('btnTournament', competition.round ? '다음 경기' : '토너먼트 시작');
   ov.classList.remove('hidden');
 }
 
@@ -674,6 +754,9 @@ function takePenaltyRound(dir) {
 }
 
 function finishTournamentMatch(won, result = `${score[0]}:${score[1]}`) {
+  if (competition.type === 'season') {
+    finishSeasonCupMatch(won, result); return;
+  }
   const away = selectedTeams[1];
   competition.history.push({ away, result, won });
   competition.shootout = null; shootout = null;
@@ -706,6 +789,145 @@ function finishTournamentMatch(won, result = `${score[0]}:${score[1]}`) {
   selectedTeams[1] = competition.opponents[competition.round];
   saveGame();
   showTournamentReady();
+}
+
+function standingsText(c, limit = 8) {
+  const ranked = rankedTable(c.table);
+  return ranked.slice(0, limit).map((r, i) =>
+    `${i + 1}. ${TEAM_DEFS[r.team].name} ${r.pts}점 ` +
+    `${r.w}승${r.d}무${r.l}패 ${r.gf - r.ga >= 0 ? '+' : ''}${r.gf - r.ga}`
+  ).join('\n');
+}
+
+function showLeagueReady() {
+  state = 'title';
+  const ov = document.getElementById('overlay');
+  const fixture = leagueUserFixture(competition);
+  const opponent = fixture[0] === competition.userTeam ? fixture[1] : fixture[0];
+  selectedTeams[0] = competition.userTeam; selectedTeams[1] = opponent;
+  selectedFormation[1] = TEAM_DEFS[opponent].formation; tacticOverride[1] = null;
+  ov.querySelector('h1').textContent = competition.type === 'season'
+    ? `시즌 ${competition.seasonNo} · 리그 ${competition.round + 1}/14`
+    : `리그 ${competition.round + 1}/14`;
+  document.getElementById('howto').textContent =
+    `${TEAM_DEFS[competition.userTeam].name} vs ${TEAM_DEFS[opponent].name}`;
+  document.getElementById('modeInfo').textContent =
+    [competition.lastMatch, standingsText(competition, 4)].filter(Boolean).join('\n\n');
+  setConfigVisible(false);
+  setModeButtons(competition.type === 'season' ? 'btnSeason' : 'btnLeague',
+    competition.round ? '다음 리그 경기' : '리그 시작');
+  ov.classList.remove('hidden');
+}
+
+function startLeague(type = 'league') {
+  competition = createLeague(selectedTeams[0], type);
+  saveGame(); showLeagueReady();
+}
+
+function startLeagueMatch() {
+  const fixture = leagueUserFixture(competition);
+  const opponent = fixture[0] === competition.userTeam ? fixture[1] : fixture[0];
+  selectedTeams[0] = competition.userTeam; selectedTeams[1] = opponent;
+  selectedFormation[1] = TEAM_DEFS[opponent].formation; tacticOverride[1] = null;
+  saveGame(); startMatch('1p');
+}
+
+function finishLeagueMatch() {
+  const fixture = leagueUserFixture(competition);
+  const [a,b] = fixture;
+  const userIsA = a === competition.userTeam;
+  applyTableResult(competition.table, a, b,
+    userIsA ? score[0] : score[1], userIsA ? score[1] : score[0]);
+  for (const [x,y] of competition.rounds[competition.round]) {
+    if (x === competition.userTeam || y === competition.userTeam) continue;
+    const result = simulateFixture(x, y);
+    applyTableResult(competition.table, x, y, result[0], result[1]);
+  }
+  competition.history.push({
+    round:competition.round + 1, away:selectedTeams[1],
+    gf:score[0], ga:score[1]
+  });
+  competition.round++;
+  if (competition.round >= competition.rounds.length) finishLeagueStage();
+  else { saveGame(); showLeagueReady(); }
+}
+
+function finishLeagueStage() {
+  const ranked = rankedTable(competition.table);
+  const rank = ranked.findIndex(r => r.team === competition.userTeam) + 1;
+  const tableText = standingsText(competition);
+  const ov = document.getElementById('overlay');
+  if (competition.type === 'season') {
+    if (rank === 1) competition.trophies.league++;
+    competition.phase = 'cup'; competition.cupRound = 0;
+    competition.cupOpponents = shuffledOpponents(competition.userTeam);
+    competition.cupHistory = [];
+    saveGame(); showCupReady(); return;
+  }
+  competition = null; saveGame(); state = 'end'; setConfigVisible(false);
+  setModeButtons('btnLeague', '새 리그');
+  document.getElementById('btnCancelCompetition').hidden = true;
+  ov.querySelector('h1').textContent = `리그 ${rank}위`;
+  document.getElementById('howto').textContent = '14경기를 모두 마쳤습니다.';
+  document.getElementById('modeInfo').textContent = tableText;
+  ov.classList.remove('hidden');
+}
+
+function showCupReady() {
+  state = 'title';
+  const ov = document.getElementById('overlay');
+  const opponent = competition.cupOpponents[competition.cupRound];
+  selectedTeams[0] = competition.userTeam; selectedTeams[1] = opponent;
+  selectedFormation[1] = TEAM_DEFS[opponent].formation; tacticOverride[1] = null;
+  ov.querySelector('h1').textContent =
+    `시즌 ${competition.seasonNo} · 컵 ${competition.cupRound + 1}라운드`;
+  document.getElementById('howto').textContent =
+    `${TEAM_DEFS[competition.userTeam].name} vs ${TEAM_DEFS[opponent].name}`;
+  document.getElementById('modeInfo').textContent = [
+    competition.lastMatch,
+    `누적 우승 · 리그 ${competition.trophies.league} / 컵 ${competition.trophies.cup}`
+  ].filter(Boolean).join('\n\n');
+  setConfigVisible(false);
+  setModeButtons('btnSeason', competition.cupRound ? '다음 컵 경기' : '컵 시작');
+  ov.classList.remove('hidden');
+}
+
+function startCupMatch() {
+  const opponent = competition.cupOpponents[competition.cupRound];
+  selectedTeams[0] = competition.userTeam; selectedTeams[1] = opponent;
+  selectedFormation[1] = TEAM_DEFS[opponent].formation; tacticOverride[1] = null;
+  saveGame(); startMatch('1p');
+}
+
+function finishSeasonCupMatch(won, result) {
+  competition.cupHistory.push({
+    round:competition.cupRound + 1, away:selectedTeams[1], result, won
+  });
+  competition.shootout = null; shootout = null;
+  if (!won) {
+    competition.phase = 'complete'; competition.cupWon = false;
+    saveGame(); showSeasonComplete(false); return;
+  }
+  competition.cupRound++;
+  if (competition.cupRound >= 3) {
+    competition.trophies.cup++; competition.phase = 'complete';
+    competition.cupWon = true;
+    saveGame(); showSeasonComplete(true); return;
+  }
+  saveGame(); showCupReady();
+}
+
+function showSeasonComplete(cupWon) {
+  state = 'end';
+  const ov = document.getElementById('overlay');
+  ov.querySelector('h1').textContent = `시즌 ${competition.seasonNo} 완료`;
+  document.getElementById('howto').textContent =
+    cupWon ? '컵 우승으로 시즌을 마쳤습니다.' : '컵에서 탈락해 시즌을 마쳤습니다.';
+  document.getElementById('modeInfo').textContent =
+    `누적 우승 · 리그 ${competition.trophies.league} / 컵 ${competition.trophies.cup}`;
+  setConfigVisible(false); setModeButtons('btnSeason', '다음 시즌');
+  document.getElementById('btnCancelCompetition').textContent = '시즌 끝내기';
+  ov.classList.remove('hidden');
 }
 
 function beginAction(teamIdx) {
@@ -874,12 +1096,14 @@ function takePossession(p) {
   if (callOffside(p)) return true;
   if (offside && offside.side !== p.side) offside = null;
   ball.owner = p; ball.lastTouch = p;
+  ball.shotSide = -1; ball.shotCounted = false;
   ball.vx = p.vx; ball.vy = p.vy;
   return true;
 }
 
 function releaseBall(p, vx, vy) {
   ball.owner = null; ball.lastTouch = p; ball.freeCd = 0.08;
+  ball.shotSide = -1; ball.shotCounted = false;
   p.trapCd = REOWN_CD; p.kickCd = Math.max(p.kickCd, 0.22);
   const sp = Math.hypot(vx, vy);
   ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
@@ -897,6 +1121,7 @@ function beginSetpiece(type, side, spot) {
     matchStats.events.push({ event:type, side, x:Math.round(spot.x), y:Math.round(spot.y) });
   if (type === 'corner') matchStats.corners[side]++;
   ball.owner = null; ball.vx = ball.vy = 0; ball.freeCd = 0.1;
+  ball.shotSide = -1; ball.shotCounted = false;
   ball.x = Math.max(0, Math.min(FW, spot.x));
   ball.y = Math.max(0, Math.min(FH, spot.y));
   let taker = null, bd = Infinity;
@@ -973,6 +1198,9 @@ function takeSetpiece(kind = 'pass') {
   const ang = Math.atan2(ty - ball.y, tx - ball.x);
   ball.lastTouch = p; ball.owner = null; ball.freeCd = 0.12;
   ball.vx = Math.cos(ang) * v; ball.vy = Math.sin(ang) * v;
+  ball.shotSide = kind === 'shoot' ? p.side : -1;
+  ball.shotCounted = false;
+  if (kind === 'shoot') matchStats.shots[p.side]++;
   if (matchStats.events.length < 20)
     matchStats.events.push({ event:'kick', type:s.type, vx:Math.round(ball.vx), vy:Math.round(ball.vy) });
   p.kickCd = 0.3; setpiece = null; state = 'play';
@@ -1067,6 +1295,7 @@ function kickOwned(p, kind, power = 0.65) {
   if (kind === 'pass' || kind === 'through') markOffside(p);
   const ang = Math.atan2(ty - p.y, tx - p.x);
   releaseBall(p, Math.cos(ang) * v, Math.sin(ang) * v);
+  if (kind === 'shoot') ball.shotSide = p.side;
   p.actShoot = p.actPass = p.actThrough = 0;
   return true;
 }
@@ -1102,6 +1331,9 @@ function collide(p) {
   // 골키퍼는 잡아서 앞으로 크게 걷어낸다. 다른 선수처럼 튕겨내면
   // 골문 앞에서 공이 계속 맴돌아 결국 실점한다.
   if (p.isGK) {
+    if (ball.shotSide === 1 - p.side && !ball.shotCounted) {
+      matchStats.onTarget[ball.shotSide]++; ball.shotCounted = true;
+    }
     p.kickCd = 0.35;
     const dir = attackDir[p.side];
     const ang = Math.atan2((FH / 2 - p.y) * 0.6 + (Math.random() * 2 - 1) * 300, dir * 900);
@@ -1113,6 +1345,8 @@ function collide(p) {
   let vx, vy;
   if (p.actShoot > 0 && p.kickCd <= 0) {
     p.actShoot = 0; p.kickCd = 0.3;
+    matchStats.shots[p.side]++;
+    ball.shotSide = p.side; ball.shotCounted = false;
     const a = aimAt(p.side);
       const ang = Math.atan2(a.y - p.y, a.x - p.x);
       vx = Math.cos(ang) * SHOOT_V * p.shotMul; vy = Math.sin(ang) * SHOOT_V * p.shotMul;
@@ -1210,6 +1444,7 @@ function separateAll() {
 }
 
 function goal(side) {
+  if (ball.shotSide === side && !ball.shotCounted) matchStats.onTarget[side]++;
   score[side]++; lastScorer = side;
   ball.owner = null; setpiece = null;
   state = 'goal'; goalTimer = GOAL_PAUSE;
@@ -1500,11 +1735,19 @@ function step(dt) {
 
 function endMatch() {
   state = 'end';
+  const summary = matchSummaryText();
+  if (competition) competition.lastMatch = summary;
   if (mode === '1p') saveBest(score[0] - score[1]);
-  if (competition && competition.type === 'tournament') {
+  const knockout = competition && (competition.type === 'tournament' ||
+    (competition.type === 'season' && competition.phase === 'cup'));
+  if (knockout) {
     if (score[0] === score[1]) { beginShootout(); return; }
     finishTournamentMatch(score[0] > score[1]);
     return;
+  }
+  if (competition && (competition.type === 'league' ||
+      (competition.type === 'season' && competition.phase === 'league'))) {
+    finishLeagueMatch(); return;
   }
   const ov = document.getElementById('overlay');
   const win = score[0] > score[1] ? '승리' : score[0] < score[1] ? '패배' : '무승부';
@@ -1515,8 +1758,24 @@ function endMatch() {
   document.getElementById('btn2p').textContent = '처음으로';
   document.getElementById('levelRow').style.display = mode === '1p' ? '' : 'none';
   document.getElementById('lengthRow').style.display = '';
+  document.getElementById('modeInfo').textContent = summary;
   ov.classList.remove('hidden');
   showBest();
+}
+
+function matchSummaryText() {
+  const total = matchStats.possession[0] + matchStats.possession[1];
+  const homePoss = total ? Math.round(matchStats.possession[0] / total * 100) : 50;
+  const awayPoss = 100 - homePoss;
+  return [
+    `기록                우리  상대`,
+    `점유율             ${homePoss}%   ${awayPoss}%`,
+    `슛 / 유효슈팅      ${matchStats.shots[0]}/${matchStats.onTarget[0]}   ` +
+      `${matchStats.shots[1]}/${matchStats.onTarget[1]}`,
+    `코너               ${matchStats.corners[0]}     ${matchStats.corners[1]}`,
+    `파울 / 카드        ${matchStats.fouls[0]}/${matchStats.cards[0]}   ` +
+      `${matchStats.fouls[1]}/${matchStats.cards[1]}`
+  ].join('\n');
 }
 
 // ── 그리기 ─────────────────────────────────────────────────────────
@@ -1863,9 +2122,14 @@ function showTitle() {
   document.getElementById('btn2p').textContent = '2인 대전';
   setConfigVisible(true);
   document.getElementById('modeInfo').textContent = '';
-  document.getElementById('btnTournament').textContent =
-    competition ? '토너먼트 이어하기' : '8팀 토너먼트';
-  document.getElementById('btnCancelCompetition').hidden = !competition;
+  resetModeButtons();
+  document.getElementById('btnCancelCompetition').textContent = '진행 포기';
+  if (competition) {
+    const id = competition.type === 'tournament' ? 'btnTournament' :
+      competition.type === 'league' ? 'btnLeague' : 'btnSeason';
+    setModeButtons(id, competition.type === 'tournament' ? '토너먼트 이어하기' :
+      competition.type === 'league' ? '리그 이어하기' : '시즌 이어하기');
+  }
   ov.classList.remove('hidden');
   showBest();
 }
@@ -1884,8 +2148,26 @@ document.getElementById('btnTournament').addEventListener('click', () => {
     shootout = competition.shootout; showShootoutScreen();
   } else startTournamentMatch();
 });
+document.getElementById('btnLeague').addEventListener('click', () => {
+  if (!competition) startLeague('league'); else startLeagueMatch();
+});
+document.getElementById('btnSeason').addEventListener('click', () => {
+  if (!competition) { startLeague('season'); return; }
+  if (competition.shootout) {
+    shootout = competition.shootout; showShootoutScreen(); return;
+  }
+  if (competition.phase === 'league') startLeagueMatch();
+  else if (competition.phase === 'cup') startCupMatch();
+  else {
+    competition = createLeague(competition.userTeam, 'season',
+      competition.seasonNo + 1, competition.trophies);
+    saveGame(); showLeagueReady();
+  }
+});
 document.getElementById('btnCancelCompetition').addEventListener('click', () => {
-  competition = null; shootout = null; saveGame(); showTitle();
+  competition = null; shootout = null; saveGame();
+  document.getElementById('btnCancelCompetition').textContent = '진행 포기';
+  showTitle();
 });
 for (const b of document.querySelectorAll('[data-pk]'))
   b.addEventListener('click', () => takePenaltyRound(+b.dataset.pk));
@@ -1893,7 +2175,8 @@ for (const b of document.querySelectorAll('[data-pk]'))
 document.getElementById('howto').innerHTML = HOWTO;
 saveData = loadSaveData();
 const settings = saveData.settings;
-competition = saveData.progress && saveData.progress.type === 'tournament'
+competition = saveData.progress &&
+  ['tournament','league','season'].includes(saveData.progress.type)
   ? saveData.progress : null;
 selectedTeams[0] = Math.max(0, Math.min(TEAM_DEFS.length - 1, +(settings.teams || [0])[0] || 0));
 selectedTeams[1] = Math.max(0, Math.min(TEAM_DEFS.length - 1, +(settings.teams || [0,0])[1] || 0));
@@ -1903,7 +2186,14 @@ selectedFormation[1] = TEAM_DEFS[selectedTeams[1]].formation;
 tacticOverride[0] = settings.tactics || null;
 if (competition) {
   selectedTeams[0] = competition.userTeam;
-  selectedTeams[1] = competition.opponents[competition.round] ?? 0;
+  const restoredOpponent = competition.type === 'tournament'
+    ? competition.opponents[competition.round]
+    : competition.phase === 'cup'
+      ? competition.cupOpponents[competition.cupRound]
+      : competition.phase === 'league'
+        ? (leagueUserFixture(competition) || []).find(n => n !== competition.userTeam)
+        : selectedTeams[1];
+  selectedTeams[1] = restoredOpponent ?? 0;
   selectedFormation[1] = TEAM_DEFS[selectedTeams[1]].formation;
   shootout = competition.shootout || null;
 }
@@ -1911,7 +2201,11 @@ initTeamUi();
 selectLevel(Math.min(2, Math.max(0, +settings.level || 1)));
 selectLength([180,360,600].includes(+settings.matchSec) ? +settings.matchSec : 180);
 if (competition) {
-  if (shootout) showShootoutScreen(); else showTournamentReady();
+  if (shootout) showShootoutScreen();
+  else if (competition.type === 'tournament') showTournamentReady();
+  else if (competition.phase === 'league') showLeagueReady();
+  else if (competition.phase === 'cup') showCupReady();
+  else showSeasonComplete(!!competition.cupWon);
 }
 
 resize();
