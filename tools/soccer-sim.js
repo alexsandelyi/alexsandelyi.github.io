@@ -207,7 +207,11 @@ const HARNESS = `
         steps++;
       }
       if (steps >= MAX) throw new Error('경기가 끝나지 않았습니다 (무한 루프)');
-      return { gf: score[0], ga: score[1], steps: steps };
+      return {
+        gf: score[0], ga: score[1], steps: steps,
+        setpieces: Object.assign({}, matchStats.setpieces),
+        events: matchStats.events.slice()
+      };
     },
     matchSec: MATCH_SEC,
     levelNames: LEVELS.map(function (l) { return l.name; }),
@@ -248,16 +252,23 @@ function runBatch(job) {
   if (job.speed !== undefined) sim.setLevelSpeed(job.lvl, job.speed);
   if (job.gkReach !== null && job.gkReach !== undefined) sim.setGkReach(job.gkReach);
 
-  let w = 0, d = 0, l = 0, gf = 0, ga = 0;
+  let w = 0, d = 0, l = 0, gf = 0, ga = 0, steps = 0;
+  const setpieces = {};
+  let sampleEvents = [];
   const t0 = Date.now();
   for (let i = 0; i < job.n; i++) {
     const r = sim.run(job.lvl);
-    gf += r.gf; ga += r.ga;
+    gf += r.gf; ga += r.ga; steps += r.steps;
+    for (const [type, count] of Object.entries(r.setpieces || {})) {
+      setpieces[type] = (setpieces[type] || 0) + count;
+    }
+    if (!sampleEvents.length) sampleEvents = r.events || [];
     if (r.gf > r.ga) w++; else if (r.gf === r.ga) d++; else l++;
   }
   return {
     lvl:job.lvl, speed:job.speed, w, d, l, gf, ga, n:job.n,
-    matchSec:sim.matchSec, secs:(Date.now() - t0) / 1000
+    matchSec:sim.matchSec, avgSteps:steps / job.n, setpieces, sampleEvents,
+    secs:(Date.now() - t0) / 1000
   };
 }
 
@@ -425,6 +436,12 @@ async function main() {
     );
   });
   console.log(`  경기 길이 ${rows[0].matchSec}초`);
+  console.log(`  평균 step 호출 ${Math.round(rows.reduce((s, r) => s + r.avgSteps, 0) / rows.length)}`);
+  console.log('  경기당 세트피스 ' + Object.keys(rows[0].setpieces).map(type => {
+    const avg = rows.reduce((s, r) => s + (r.setpieces[type] || 0) / r.n, 0) / rows.length;
+    return `${type}=${avg.toFixed(1)}`;
+  }).join(' '));
+  if (rows[0].n === 1) console.log('  이벤트 표본 ' + JSON.stringify(rows[0].sampleEvents));
   printNormalResults(rows);
 }
 
