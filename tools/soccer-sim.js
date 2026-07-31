@@ -32,7 +32,10 @@ const SWEEP_SPEEDS = Array.from({ length:11 }, (_, i) => (84 + i) / 100);
 
 // ── 인자 ────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const o = { n:null, seed:1, levels:[0, 1, 2], botLevel:1, sweepSpeed:false };
+  const o = {
+    n:null, seed:1, levels:[0, 1, 2], botLevel:1, sweepSpeed:false,
+    gkReach:null
+  };
   let levelSet = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -45,6 +48,7 @@ function parseArgs(argv) {
     else if (a === '--seed') o.seed = +next();
     else if (a === '-l' || a === '--level') { o.levels = [+next()]; levelSet = true; }
     else if (a === '--bot') o.botLevel = +next();
+    else if (a === '--gk-reach') o.gkReach = +next();
     else if (a === '--sweep-speed') o.sweepSpeed = true;
     else if (a === '-h' || a === '--help') o.help = true;
     else throw new Error(`알 수 없는 인자: ${a}`);
@@ -59,6 +63,9 @@ function parseArgs(argv) {
     throw new Error('--bot 은 0~2 정수여야 합니다');
   }
   if (o.sweepSpeed && levelSet) throw new Error('--sweep-speed 와 -l 은 함께 쓸 수 없습니다');
+  if (o.gkReach !== null && (!Number.isFinite(o.gkReach) || o.gkReach < 1 || o.gkReach > 2.5)) {
+    throw new Error('--gk-reach 는 1~2.5 숫자여야 합니다');
+  }
   return o;
 }
 
@@ -68,6 +75,7 @@ const HELP = `동네 축구 밸런스 측정
   -l, --level <0|1|2>  한 난이도만 측정 (0=쉬움, 1=보통, 2=어려움)
       --seed <정수>    난수 시드 (기본 1). 같은 시드면 결과가 재현된다
       --bot <0|1|2>    사람 자리를 대신하는 봇의 수준 (기본 1=보통)
+      --gk-reach <수>  골키퍼 공 접촉 반경 배수 측정값 덮어쓰기
       --sweep-speed    보통 speed 0.84~0.94를 0.01 간격으로 측정
                        기본 경기 수는 속도값당 200 (-n으로 변경 가능)
   -h, --help           이 도움말
@@ -187,6 +195,7 @@ const HARNESS = `
   __sim = {
     setBotLevel: function (n) { botLevel = n; },
     setLevelSpeed: function (n, speed) { LEVELS[n].speed = speed; },
+    setGkReach: function (n) { GK_REACH_MUL = n; },
     run: function (lvl) {
       level = lvl;
       startMatch('1p');
@@ -237,6 +246,7 @@ function runBatch(job) {
   const sim = createSimulation(job.seed);
   sim.setBotLevel(job.botLevel);
   if (job.speed !== undefined) sim.setLevelSpeed(job.lvl, job.speed);
+  if (job.gkReach !== null && job.gkReach !== undefined) sim.setGkReach(job.gkReach);
 
   let w = 0, d = 0, l = 0, gf = 0, ga = 0;
   const t0 = Date.now();
@@ -386,7 +396,8 @@ async function main() {
     console.log(`  사람 자리 봇  ${LEVEL_NAMES[opt.botLevel]} 수준`);
     console.log(`  병렬 작업 ${workerLimit(SWEEP_SPEEDS.length)}개`);
     const jobs = SWEEP_SPEEDS.map(speed => ({
-      lvl:1, speed, n:opt.n, seed:opt.seed, botLevel:opt.botLevel
+      lvl:1, speed, n:opt.n, seed:opt.seed, botLevel:opt.botLevel,
+      gkReach:opt.gkReach
     }));
     const rows = await runJobs(jobs, (row, done, total) => {
       console.log(
@@ -402,9 +413,10 @@ async function main() {
   console.log(`  경기 수  난이도당 ${opt.n}`);
   console.log(`  시드     ${opt.seed} (각 난이도에서 같은 난수열로 초기화)`);
   console.log(`  사람 자리 봇  ${LEVEL_NAMES[opt.botLevel]} 수준`);
+  if (opt.gkReach !== null) console.log(`  골키퍼 도달 배수 ${opt.gkReach}`);
   console.log(`  병렬 작업 ${workerLimit(opt.levels.length)}개`);
   const jobs = opt.levels.map(lvl => ({
-    lvl, n:opt.n, seed:opt.seed, botLevel:opt.botLevel
+    lvl, n:opt.n, seed:opt.seed, botLevel:opt.botLevel, gkReach:opt.gkReach
   }));
   const rows = await runJobs(jobs, (row, done, total) => {
     console.log(
