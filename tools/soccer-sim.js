@@ -34,7 +34,7 @@ const SWEEP_SPEEDS = Array.from({ length:11 }, (_, i) => (84 + i) / 100);
 function parseArgs(argv) {
   const o = {
     n:null, seed:1, levels:[0, 1, 2], botLevel:1, sweepSpeed:false,
-    gkReach:null
+    gkReach:null, opponentSpeed:null, selfTest:false
   };
   let levelSet = false;
   for (let i = 0; i < argv.length; i++) {
@@ -49,7 +49,9 @@ function parseArgs(argv) {
     else if (a === '-l' || a === '--level') { o.levels = [+next()]; levelSet = true; }
     else if (a === '--bot') o.botLevel = +next();
     else if (a === '--gk-reach') o.gkReach = +next();
+    else if (a === '--opponent-speed') o.opponentSpeed = +next();
     else if (a === '--sweep-speed') o.sweepSpeed = true;
+    else if (a === '--self-test') o.selfTest = true;
     else if (a === '-h' || a === '--help') o.help = true;
     else throw new Error(`알 수 없는 인자: ${a}`);
   }
@@ -66,6 +68,10 @@ function parseArgs(argv) {
   if (o.gkReach !== null && (!Number.isFinite(o.gkReach) || o.gkReach < 1 || o.gkReach > 2.5)) {
     throw new Error('--gk-reach 는 1~2.5 숫자여야 합니다');
   }
+  if (o.opponentSpeed !== null &&
+      (!Number.isFinite(o.opponentSpeed) || o.opponentSpeed < 0.5 || o.opponentSpeed > 1.2)) {
+    throw new Error('--opponent-speed 는 0.5~1.2 숫자여야 합니다');
+  }
   return o;
 }
 
@@ -76,8 +82,10 @@ const HELP = `동네 축구 밸런스 측정
       --seed <정수>    난수 시드 (기본 1). 같은 시드면 결과가 재현된다
       --bot <0|1|2>    사람 자리를 대신하는 봇의 수준 (기본 1=보통)
       --gk-reach <수>  골키퍼 공 접촉 반경 배수 측정값 덮어쓰기
+      --opponent-speed <수>  1P 상대 이동 속도 배수 덮어쓰기
       --sweep-speed    보통 speed 0.84~0.94를 0.01 간격으로 측정
                        기본 경기 수는 속도값당 200 (-n으로 변경 가능)
+      --self-test      오프사이드·파울 결정론 시나리오 검사
   -h, --help           이 도움말
 `;
 
@@ -196,6 +204,9 @@ const HARNESS = `
     setBotLevel: function (n) { botLevel = n; },
     setLevelSpeed: function (n, speed) { LEVELS[n].speed = speed; },
     setGkReach: function (n) { GK_REACH_MUL = n; },
+    setOpponentSpeed: function (n) {
+      for (var i = 0; i < OPPONENT_SPEED_MUL.length; i++) OPPONENT_SPEED_MUL[i] = n;
+    },
     run: function (lvl) {
       level = lvl;
       startMatch('1p');
@@ -210,12 +221,46 @@ const HARNESS = `
       return {
         gf: score[0], ga: score[1], steps: steps,
         setpieces: Object.assign({}, matchStats.setpieces),
-        events: matchStats.events.slice()
+        events: matchStats.events.slice(),
+        stats: {
+          offsides: matchStats.offsides.slice(),
+          fouls: matchStats.fouls.slice(),
+          cards: matchStats.cards.slice()
+        }
       };
     },
     matchSec: MATCH_SEC,
     levelNames: LEVELS.map(function (l) { return l.name; }),
-    levelSpeeds: LEVELS.map(function (l) { return l.speed; })
+    levelSpeeds: LEVELS.map(function (l) { return l.speed; }),
+    selfTest: function () {
+      level = 1;
+      startMatch('1p');
+      var passer = teams[0][9], offender = teams[0][10];
+      passer.x = 1050; passer.y = 680;
+      offender.x = 1800; offender.y = 680;
+      for (var i = 0; i < teams[1].length; i++) {
+        teams[1][i].x = 1200 + i * 8;
+        teams[1][i].y = 100 + i * 90;
+      }
+      ball.owner = passer; ball.x = passer.x + 42; ball.y = passer.y;
+      markOffside(passer);
+      var marked = !!offside && offside.offenders.indexOf(offender) >= 0;
+      ball.owner = null; ball.freeCd = 0; offender.trapCd = 0;
+      takePossession(offender);
+      var called = state === 'setpiece' && setpiece && setpiece.type === 'free' &&
+                   matchStats.offsides[0] === 1;
+
+      startMatch('1p');
+      var tackler = teams[1][1], victim = teams[0][1];
+      tackler.x = 1000; tackler.y = 680; tackler.vx = 500; tackler.vy = 0;
+      victim.x = 1040; victim.y = 680; victim.vx = 0; victim.vy = 0;
+      ball.owner = victim; ball.x = 1083; ball.y = 680;
+      tackler.tackleT = 0.2;
+      separateAll();
+      var foul = state === 'setpiece' && setpiece && matchStats.fouls[1] === 1;
+      var card = matchStats.cards[1] === 1 && tackler.yellow === 1;
+      return { offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card };
+    }
   };
 })();
 `;
@@ -251,9 +296,13 @@ function runBatch(job) {
   sim.setBotLevel(job.botLevel);
   if (job.speed !== undefined) sim.setLevelSpeed(job.lvl, job.speed);
   if (job.gkReach !== null && job.gkReach !== undefined) sim.setGkReach(job.gkReach);
+  if (job.opponentSpeed !== null && job.opponentSpeed !== undefined) {
+    sim.setOpponentSpeed(job.opponentSpeed);
+  }
 
   let w = 0, d = 0, l = 0, gf = 0, ga = 0, steps = 0;
   const setpieces = {};
+  const eventTotals = { offsides:0, fouls:0, cards:0 };
   let sampleEvents = [];
   const t0 = Date.now();
   for (let i = 0; i < job.n; i++) {
@@ -263,11 +312,14 @@ function runBatch(job) {
       setpieces[type] = (setpieces[type] || 0) + count;
     }
     if (!sampleEvents.length) sampleEvents = r.events || [];
+    for (const key of Object.keys(eventTotals)) {
+      eventTotals[key] += (r.stats && r.stats[key] || []).reduce((s, n) => s + n, 0);
+    }
     if (r.gf > r.ga) w++; else if (r.gf === r.ga) d++; else l++;
   }
   return {
     lvl:job.lvl, speed:job.speed, w, d, l, gf, ga, n:job.n,
-    matchSec:sim.matchSec, avgSteps:steps / job.n, setpieces, sampleEvents,
+    matchSec:sim.matchSec, avgSteps:steps / job.n, setpieces, sampleEvents, eventTotals,
     secs:(Date.now() - t0) / 1000
   };
 }
@@ -399,6 +451,14 @@ async function main() {
     return;
   }
   if (opt.help) { process.stdout.write(HELP); return; }
+  if (opt.selfTest) {
+    const result = createSimulation(opt.seed).selfTest();
+    const ok = Object.values(result).every(Boolean);
+    console.log('결정론 규칙 검사 ' + (ok ? '통과' : '실패'));
+    console.log(JSON.stringify(result));
+    if (!ok) process.exitCode = 1;
+    return;
+  }
 
   if (opt.sweepSpeed) {
     console.log('동네 축구 speed 스윕');
@@ -408,7 +468,7 @@ async function main() {
     console.log(`  병렬 작업 ${workerLimit(SWEEP_SPEEDS.length)}개`);
     const jobs = SWEEP_SPEEDS.map(speed => ({
       lvl:1, speed, n:opt.n, seed:opt.seed, botLevel:opt.botLevel,
-      gkReach:opt.gkReach
+      gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed
     }));
     const rows = await runJobs(jobs, (row, done, total) => {
       console.log(
@@ -425,9 +485,11 @@ async function main() {
   console.log(`  시드     ${opt.seed} (각 난이도에서 같은 난수열로 초기화)`);
   console.log(`  사람 자리 봇  ${LEVEL_NAMES[opt.botLevel]} 수준`);
   if (opt.gkReach !== null) console.log(`  골키퍼 도달 배수 ${opt.gkReach}`);
+  if (opt.opponentSpeed !== null) console.log(`  상대 이동 배수 ${opt.opponentSpeed}`);
   console.log(`  병렬 작업 ${workerLimit(opt.levels.length)}개`);
   const jobs = opt.levels.map(lvl => ({
-    lvl, n:opt.n, seed:opt.seed, botLevel:opt.botLevel, gkReach:opt.gkReach
+    lvl, n:opt.n, seed:opt.seed, botLevel:opt.botLevel,
+    gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed
   }));
   const rows = await runJobs(jobs, (row, done, total) => {
     console.log(
@@ -442,6 +504,10 @@ async function main() {
     return `${type}=${avg.toFixed(1)}`;
   }).join(' '));
   if (rows[0].n === 1) console.log('  이벤트 표본 ' + JSON.stringify(rows[0].sampleEvents));
+  console.log('  경기당 판정 ' + Object.keys(rows[0].eventTotals).map(key => {
+    const avg = rows.reduce((s, r) => s + r.eventTotals[key] / r.n, 0) / rows.length;
+    return `${key}=${avg.toFixed(2)}`;
+  }).join(' '));
   printNormalResults(rows);
 }
 

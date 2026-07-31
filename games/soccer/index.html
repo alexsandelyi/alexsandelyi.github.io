@@ -186,7 +186,7 @@ const C = {
 // 재현되지 않았다. 난이도 차이는 react(반응 지연), aimErr(조준 오차),
 // gk(골키퍼 반응)를 포함한 전체 조합으로 관리하고 단계마다 다시 측정한다.
 const LEVELS = [
-  { name:'쉬움',  speed:0.86, react:0.65, aimErr:200, shoot:0.88, gk:0.55 },
+  { name:'쉬움',  speed:0.86, react:0.65, aimErr:200, shoot:0.88, gk:0.45 },
   { name:'보통',  speed:0.88, react:0.28, aimErr:100, shoot:0.88, gk:0.85 },
   { name:'어려움', speed:0.92, react:0.12, aimErr:40,  shoot:0.88, gk:1.00 }
 ];
@@ -340,10 +340,11 @@ passBtn.addEventListener('pointercancel', () => passBtn.classList.remove('held')
 let mode = '1p', state = 'title';
 let clock = MATCH_SEC / 2, goalTimer = 0, lastScorer = -1;
 let half = 1, addedBank = 0, inAdded = false, setpiece = null;
+let offside = null, notice = { text:'', timer:0, color:'#F2CE7A' };
 const score = [0, 0];
 const matchStats = {
   shots:[0,0], onTarget:[0,0], possession:[0,0], corners:[0,0],
-  fouls:[0,0], cards:[0,0], setpieces:{}, events:[]
+  fouls:[0,0], cards:[0,0], offsides:[0,0], setpieces:{}, events:[]
 };
 const ball = { x:0, y:0, vx:0, vy:0, owner:null, lastTouch:null, freeCd:0 };
 const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
@@ -372,7 +373,7 @@ function buildTeams() {
       x:0, y:0, vx:0, vy:0,
       kickCd:0, trapCd:0, tackleCd:0, tackleT:0,
       actShoot:0, actPass:0, actThrough:0, shootHeld:false, shootCharge:0,
-      aimX:attackDir[side], aimY:0, manualAim:false,
+      aimX:attackDir[side], aimY:0, manualAim:false, yellow:0,
       aiT:Math.random() * 0.3, aiTx:0, aiTy:0
     }));
   }
@@ -391,6 +392,7 @@ function resetPositions(kickSide) {
     p.kickCd = p.trapCd = p.tackleCd = p.tackleT = 0;
     p.actShoot = p.actPass = p.actThrough = 0;
     p.shootHeld = false; p.shootCharge = 0;
+    p.yellow = 0;
     // 킥오프: 공을 넣는 팀만 센터서클 안으로 한 명 들여보낸다
     if (p.role === 'FW' && p.no === 9 && side === kickSide) {
       p.x = FW / 2 - attackDir[side] * R_PLAYER * 2;
@@ -398,7 +400,7 @@ function resetPositions(kickSide) {
     }
   }
   ball.x = FW / 2; ball.y = FH / 2; ball.vx = ball.vy = 0;
-  ball.owner = ball.lastTouch = null; ball.freeCd = 0;
+  ball.owner = ball.lastTouch = null; ball.freeCd = 0; offside = null;
   cam.x = FW / 2; cam.y = FH / 2;
   ctrl[0] = ctrl[1] = null;
   ctrlLock[0] = ctrlLock[1] = 0;
@@ -410,9 +412,10 @@ function startMatch(m) {
   matchStats.shots.fill(0); matchStats.onTarget.fill(0);
   matchStats.possession.fill(0); matchStats.corners.fill(0);
   matchStats.fouls.fill(0); matchStats.cards.fill(0); matchStats.setpieces = {};
+  matchStats.offsides.fill(0);
   matchStats.events = [];
   half = 1; clock = MATCH_SEC / 2; addedBank = 0; inAdded = false;
-  attackDir[0] = 1; attackDir[1] = -1; setpiece = null;
+  attackDir[0] = 1; attackDir[1] = -1; setpiece = null; offside = null;
   buildTeams();
   resetPositions(0);
   state = 'play';
@@ -470,6 +473,8 @@ const B_FRICTION = 0.55, B_MAX = 2000;
 const TOUCH_V = 430, PASS_V = 950, SHOOT_V = 1650;
 const TRAP_R = R_PLAYER + R_BALL + 7, TRAP_V = 620;
 const OWNER_SPEED = 0.88, SPRINT_SPEED = 1.25, REOWN_CD = 0.35;
+const OPPONENT_SPEED_MUL = [0.95, 0.92, 1.00];
+const HUMAN_SHOOT_MUL = [1.18, 1.40, 1.18];
 
 function movePlayer(p, ax, ay, dt, speedMul = 1) {
   const m = Math.hypot(ax, ay);
@@ -498,6 +503,33 @@ const inGoalMouth = (y) => y > (FH - GOAL_H) / 2 && y < (FH + GOAL_H) / 2;
 function defendingAtGoal(x) {
   const ownDir = x <= 0 ? 1 : -1;
   return attackDir[0] === ownDir ? 0 : 1;
+}
+
+function secondLastDefenderLine(side) {
+  const dir = attackDir[side];
+  const projected = teams[1 - side].map(p => p.x * dir).sort((a, b) => b - a);
+  return projected.length > 1 ? projected[1] / dir : (dir === 1 ? FW : 0);
+}
+
+function markOffside(p) {
+  if (level === 0) { offside = null; return; }
+  const dir = attackDir[p.side];
+  const lineX = secondLastDefenderLine(p.side);
+  const threshold = Math.max(lineX * dir, ball.x * dir) + 18;
+  const offenders = teams[p.side].filter(t =>
+    t !== p && !t.isGK && (t.x - FW / 2) * dir > 0 && t.x * dir > threshold
+  );
+  offside = offenders.length ? { side:p.side, offenders, lineX, timer:3 } : null;
+}
+
+function callOffside(p) {
+  if (!offside || offside.side !== p.side || !offside.offenders.includes(p)) return false;
+  matchStats.offsides[p.side]++;
+  notice = { text:'오프사이드', timer:1.2, color:'#F2CE7A' };
+  const side = 1 - p.side;
+  offside = null;
+  beginSetpiece('free', side, { x:p.x, y:p.y });
+  return true;
 }
 
 function outOfPlay(x, y) {
@@ -554,6 +586,8 @@ function updateBall(dt) {
 
 function takePossession(p) {
   if (p.trapCd > 0 || ball.freeCd > 0) return false;
+  if (callOffside(p)) return true;
+  if (offside && offside.side !== p.side) offside = null;
   ball.owner = p; ball.lastTouch = p;
   ball.vx = p.vx; ball.vy = p.vy;
   return true;
@@ -572,6 +606,7 @@ const SET_WAIT = {
 };
 
 function beginSetpiece(type, side, spot) {
+  offside = null;
   matchStats.setpieces[type] = (matchStats.setpieces[type] || 0) + 1;
   if (matchStats.events.length < 20)
     matchStats.events.push({ event:type, side, x:Math.round(spot.x), y:Math.round(spot.y) });
@@ -599,6 +634,11 @@ function beginSetpiece(type, side, spot) {
     }
   }
   for (const p of teams[1 - side]) {
+    if (type === 'penalty' && p.isGK) {
+      const gx = attackDir[p.side] === 1 ? R_PLAYER : FW - R_PLAYER;
+      p.x = gx; p.y = FH / 2; p.vx = p.vy = 0;
+      continue;
+    }
     const dx = p.x - ball.x, dy = p.y - ball.y;
     const d = Math.hypot(dx, dy);
     if (d < CIRCLE_R && d > 0) {
@@ -620,7 +660,10 @@ function takeSetpiece(kind = 'pass') {
   const s = setpiece, p = s.taker;
   let tx, ty, v;
   const target = passTarget(p, kind === 'through');
-  if (s.type === 'throw') {
+  if (s.type === 'penalty') {
+    const a = aimAt(s.side); tx = a.x; ty = a.y; v = SHOOT_V;
+    matchStats.shots[s.side]++;
+  } else if (s.type === 'throw') {
     tx = Math.max(180, Math.min(FW - 180, ball.x + attackDir[s.side] * 180));
     ty = ball.y < FH / 2 ? 350 : FH - 350;
     v = 820;
@@ -701,12 +744,14 @@ function kickOwned(p, kind, power = 0.65) {
   let tx, ty, v;
   const aimMag = Math.hypot(p.aimX, p.aimY);
   if (kind === 'shoot') {
+    matchStats.shots[p.side]++;
     if (p.manualAim && aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 1000; ty = p.y + p.aimY / aimMag * 1000;
     } else {
       const a = aimAt(p.side); tx = a.x; ty = a.y;
     }
-    v = SHOOT_V * (0.62 + 0.38 * power);
+    v = SHOOT_V * (0.62 + 0.38 * power) *
+      (mode === '1p' && p === ctrl[0] ? HUMAN_SHOOT_MUL[level] : 1);
   } else {
     const through = kind === 'through';
     const t = passTarget(p, through);
@@ -724,6 +769,7 @@ function kickOwned(p, kind, power = 0.65) {
       const a = aimAt(p.side); tx = a.x; ty = a.y; v = PASS_V * 0.8;
     }
   }
+  if (kind === 'pass' || kind === 'through') markOffside(p);
   const ang = Math.atan2(ty - p.y, tx - p.x);
   releaseBall(p, Math.cos(ang) * v, Math.sin(ang) * v);
   p.actShoot = p.actPass = p.actThrough = 0;
@@ -804,14 +850,54 @@ function collide(p) {
   ball.vy = sp > B_MAX ? vy / sp * B_MAX : vy;
 }
 
+function inPenaltyArea(side, x, y) {
+  if (y < (FH - PA_W) / 2 || y > (FH + PA_W) / 2) return false;
+  return attackDir[side] === 1 ? x > FW - PA_D : x < PA_D;
+}
+
+function callFoul(tackler, victim) {
+  if (state !== 'play' || tackleFoulGuard) return;
+  tackleFoulGuard = true;
+  tackler.tackleT = 0; tackler.tackleCd = Math.max(tackler.tackleCd, 1);
+  matchStats.fouls[tackler.side]++;
+  const rel = Math.hypot(tackler.vx - victim.vx, tackler.vy - victim.vy);
+  if (rel > 420) {
+    tackler.yellow = 1; matchStats.cards[tackler.side]++;
+    notice = { text:'파울 · 옐로카드', timer:1.2, color:'#F2CE4A' };
+  } else {
+    notice = { text:'파울', timer:1.0, color:'#F2F7F4' };
+  }
+  if (ball.owner) { ball.owner.trapCd = REOWN_CD; ball.owner = null; }
+  if (inPenaltyArea(victim.side, victim.x, victim.y)) {
+    beginSetpiece('penalty', victim.side, {
+      x:attackDir[victim.side] === 1 ? FW - PEN_SPOT : PEN_SPOT, y:FH / 2
+    });
+  } else {
+    beginSetpiece('free', victim.side, { x:victim.x, y:victim.y });
+  }
+}
+
 // 선수끼리 겹치지 않게 (22명 → 231쌍, Canvas 2D 로 충분히 가볍다)
+let tackleFoulGuard = false;
 function separateAll() {
+  tackleFoulGuard = false;
   const all = teams[0].concat(teams[1]);
   for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
     const a = all[i], b = all[j];
     const dx = b.x - a.x, dy = b.y - a.y;
     const d = Math.hypot(dx, dy), min = R_PLAYER * 2;
     if (d >= min || d === 0) continue;
+    if (a.side !== b.side) {
+      const tackler = a.tackleT > 0 ? a : b.tackleT > 0 ? b : null;
+      const victim = tackler === a ? b : a;
+      if (tackler) {
+        const ballDist = Math.hypot(ball.x - tackler.x, ball.y - tackler.y);
+        if (ballDist > d + R_BALL * 0.6) {
+          callFoul(tackler, victim);
+          if (state !== 'play') return;
+        }
+      }
+    }
     const push = (min - d) / 2, nx = dx / d, ny = dy / d;
     a.x -= nx * push; a.y -= ny * push;
     b.x += nx * push; b.y += ny * push;
@@ -851,6 +937,10 @@ function slotTarget(p) {
   // 수비는 자기 진영을 크게 벗어나지 않는다
   if (p.role === 'DF') {
     tx = attackDir[p.side] === 1 ? Math.min(tx, FW * 0.58) : Math.max(tx, FW * 0.42);
+  }
+  if (level > 0 && (p.role === 'MF' || p.role === 'FW')) {
+    const line = secondLastDefenderLine(p.side);
+    tx = attackDir[p.side] === 1 ? Math.min(tx, line - 36) : Math.max(tx, line + 36);
   }
   return {
     x:Math.max(R_PLAYER, Math.min(FW - R_PLAYER, tx)),
@@ -902,6 +992,9 @@ function aiPlayer(p, dt, L, isChaser) {
 
   // 공이 발 앞에 있으면 슛이나 패스
   const bd = Math.hypot(ball.x - p.x, ball.y - p.y);
+  if (ball.owner && ball.owner.side !== p.side && bd < 92 && p.tackleCd <= 0) {
+    p.tackleT = 0.22; p.tackleCd = 0.85;
+  }
   if (bd < R_PLAYER + R_BALL + 24 && p.kickCd <= 0) {
     const dir = attackDir[p.side];
     const toGoal = dir === 1 ? FW - p.x : p.x;
@@ -997,6 +1090,11 @@ function advanceClock(dt, stopped = false) {
 }
 
 function step(dt) {
+  if (notice.timer > 0) notice.timer -= dt;
+  if (offside) {
+    offside.timer -= dt;
+    if (offside.timer <= 0) offside = null;
+  }
   if (state === 'halftime') {
     goalTimer -= dt;
     if (goalTimer <= 0) {
@@ -1023,6 +1121,7 @@ function step(dt) {
 
   advanceClock(dt, false);
   if (state !== 'play') return;
+  if (ball.owner) matchStats.possession[ball.owner.side] += dt;
 
   const L = LEVELS[level];
   ctrlLock[0] = Math.max(0, ctrlLock[0] - dt);
@@ -1048,12 +1147,14 @@ function step(dt) {
         movePlayer(p, a.ax, a.ay, dt, 0.92);
       } else {
         const a = aiPlayer(p, dt, L, p === chaser[side]);
-        movePlayer(p, a.ax, a.ay, dt, L.speed);
+        movePlayer(p, a.ax, a.ay, dt,
+          L.speed * (mode === '1p' ? OPPONENT_SPEED_MUL[level] : 1));
       }
     }
   }
 
   separateAll();
+  if (state !== 'play') return;
   if (ball.owner) {
     const p = ball.owner;
     if (p.actShoot > 0) kickOwned(p, 'shoot', p.actShoot);
@@ -1092,6 +1193,7 @@ function draw() {
 
   applyFieldTransform();
   drawPitch();
+  if (offside) drawOffsideLine();
   for (const side of [0, 1]) for (const p of teams[side]) drawPlayer(p);
   drawBall();
 
@@ -1101,6 +1203,15 @@ function draw() {
   if (state === 'goal') drawGoalText();
   if (state === 'setpiece') drawSetpieceText();
   if (state === 'halftime') drawBannerText('하프타임', C.gold || '#F2CE7A');
+  if (notice.timer > 0) drawNotice();
+}
+
+function drawOffsideLine() {
+  ctx.save();
+  ctx.strokeStyle = '#F2CE7A'; ctx.lineWidth = 5;
+  ctx.setLineDash([18, 14]);
+  ctx.beginPath(); ctx.moveTo(offside.lineX, 0); ctx.lineTo(offside.lineX, FH); ctx.stroke();
+  ctx.restore();
 }
 
 function drawPitch() {
@@ -1159,6 +1270,10 @@ function drawPlayer(p) {
     ctx.fillStyle = '#F2F7F4';
     ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(-11, -6); ctx.lineTo(11, -6); ctx.closePath(); ctx.fill();
     ctx.restore();
+  }
+  if (p.yellow) {
+    ctx.fillStyle = '#F2CE4A';
+    ctx.fillRect(p.x + R_PLAYER * 0.45, p.y - R_PLAYER * 1.15, 12, 17);
   }
 
   // 등번호는 세워서 그린다
@@ -1240,6 +1355,15 @@ function drawSetpieceText() {
   ctx.font = `700 ${14 * view.dpr}px ${bodyFont()}`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(names[setpiece.type], canvas.width / 2, 29 * view.dpr);
+}
+
+function drawNotice() {
+  ctx.fillStyle = 'rgba(21,37,40,.82)';
+  ctx.fillRect(canvas.width / 2 - 110 * view.dpr, 52 * view.dpr, 220 * view.dpr, 36 * view.dpr);
+  ctx.fillStyle = notice.color;
+  ctx.font = `700 ${15 * view.dpr}px ${bodyFont()}`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(notice.text, canvas.width / 2, 70 * view.dpr);
 }
 
 function bodyFont() { return getComputedStyle(document.body).fontFamily; }
