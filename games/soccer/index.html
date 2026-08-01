@@ -235,9 +235,9 @@ const C = {
 // 급변은 재현되지 않았다. 난이도 차이는 react(반응 지연), aimErr(조준
 // 오차), gk(골키퍼 반응)를 포함한 전체 조합으로 관리하고 단계마다 측정한다.
 const LEVELS = [
-  { name:'쉬움',  react:0.90, aimErr:280, shoot:0.75, gk:0.35 },
-  { name:'보통',  react:0.28, aimErr:100, shoot:0.88, gk:0.85 },
-  { name:'어려움', react:0.15, aimErr:55,  shoot:0.88, gk:0.95 }
+  { name:'쉬움',  react:0.90, aimErr:280, gk:0.55 },
+  { name:'보통',  react:0.28, aimErr:100, gk:0.85 },
+  { name:'어려움', react:0.15, aimErr:55,  gk:0.95 }
 ];
 let level = 1;
 
@@ -983,9 +983,10 @@ const OPPONENT_SPEED_MUL = [1, 1, 1];
 const OFFSIDE_DISCIPLINE = [0, 0.72, 0.90];
 const OFFSIDE_RUN_PERIOD = [0, 2, 4];
 const OFFSIDE_RUN_REWARD = [0, 260, 120];
-const HUMAN_SHOOT_MUL = [1.18, 1.40, 1.18];
-const HUMAN_TACKLE_BONUS = [0, 0.28, 0];
-const HUMAN_GK_REACH_MUL = [1, 1.35, 1];
+const AI_ACTION_RATE = 0.88;
+// AI 파라미터만으로 기준 승률을 회복하지 못해 남긴 단조 1P 보조.
+// 쉬움=보통, 어려움=0이며 한 값으로 슛·태클·GK 범위를 함께 조절한다.
+const HUMAN_ASSIST = [0.35, 0.35, 0];
 
 function movePlayer(p, ax, ay, dt, speedMul = 1) {
   const m = Math.hypot(ax, ay);
@@ -1275,13 +1276,10 @@ function kickOwned(p, kind, power = 0.65) {
     if (p.manualAim && aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 1000; ty = p.y + p.aimY / aimMag * 1000;
     } else {
-      const a = aimAt(p.side); tx = a.x;
-      ty = mode === '1p' && p === ctrl[0]
-        ? FH / 2 + (Math.random() < .5 ? -1 : 1) * GOAL_H * .38
-        : a.y;
+      const a = aimAt(p.side); tx = a.x; ty = a.y;
     }
     v = SHOOT_V * p.shotMul * (0.62 + 0.38 * power) *
-      (mode === '1p' && p === ctrl[0] ? HUMAN_SHOOT_MUL[level] : 1);
+      (mode === '1p' && p === ctrl[0] ? 1 + HUMAN_ASSIST[level] * 0.8 : 1);
   } else {
     const through = kind === 'through';
     const t = passTarget(p, through);
@@ -1311,7 +1309,7 @@ function kickOwned(p, kind, power = 0.65) {
 function collide(p) {
   const dx = ball.x - p.x, dy = ball.y - p.y;
   const gkAssist = p.isGK && p.side === 0 && mode === '1p'
-    ? HUMAN_GK_REACH_MUL[level] : 1;
+    ? 1 + HUMAN_ASSIST[level] : 1;
   const d = Math.hypot(dx, dy), min = p.reach * gkAssist + R_BALL;
   if (d >= min || d === 0) return;
   if (!ball.owner && callOffside(p)) return;
@@ -1321,7 +1319,7 @@ function collide(p) {
     const owner = ball.owner;
     if (owner === p || owner.side === p.side) return;
     const rel = Math.hypot(p.vx - owner.vx, p.vy - owner.vy);
-    const assist = mode === '1p' && p.side === 0 ? HUMAN_TACKLE_BONUS[level] : 0;
+    const assist = mode === '1p' && p.side === 0 ? HUMAN_ASSIST[level] : 0;
     const contest = p.defenseMul / (p.defenseMul + owner.defenseMul);
     if ((p.tackleT > 0 && Math.random() < contest + .18 + assist) ||
         rel > P_MAX * 0.72) {
@@ -1579,11 +1577,11 @@ function aiPlayer(p, dt, L, isChaser) {
       teamTactics(1 - p.side).line > .65;
     if (p.isGK) {
       // 처리는 collide() 안에서 직접 한다 (잡아서 걷어내기)
-    } else if (toGoal < FW * 0.32 && Math.random() < L.shoot) {
+    } else if (toGoal < FW * 0.32 && Math.random() < AI_ACTION_RATE) {
       p.actShoot = 0.65;                                      // 골문 근처면 슛
-    } else if (exploitHighLine && Math.random() < L.shoot * .8) {
+    } else if (exploitHighLine && Math.random() < AI_ACTION_RATE * .8) {
       p.actThrough = 0.15;                                    // 높은 선 뒤 측면 침투
-    } else if (Math.random() < L.shoot * 0.8) {
+    } else if (Math.random() < AI_ACTION_RATE * 0.8) {
       p.actPass = 0.15;                                       // 아니면 전진 패스
     }
   }

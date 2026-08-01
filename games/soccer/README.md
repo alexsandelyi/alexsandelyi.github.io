@@ -11,6 +11,7 @@
 | [principles.md](principles.md) | 확장 중에도 지키는 4가지 제약. 다른 모든 문서의 상위 규칙 |
 | [baseline.md](baseline.md) | 현재 구현이 가진 것과 없는 것. 모든 설계의 출발점 |
 | [balance.md](balance.md) | 실측 승률과 측정 조건. 도구는 `tools/soccer-sim.js` |
+| [balance-history.md](balance-history.md) | 0~3단계 과거 기준선과 목표 변경 근거 |
 | [balance-expansion.md](balance-expansion.md) | 4단계 이후 회귀·팀·전술 실측 |
 | [input-system.md](input-system.md) | 조작과 플레이 감. 공 소유, 조준, 액션, 선수 전환 |
 | [match-rules.md](match-rules.md) | 경기 규칙과 심판. 아웃, 세트피스, 오프사이드, 파울 |
