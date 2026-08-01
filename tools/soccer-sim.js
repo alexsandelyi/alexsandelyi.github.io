@@ -10,7 +10,7 @@
 //   node tools/soccer-sim.js -n 200       # 200경기 (밸런스 변경 시 권장)
 //   node tools/soccer-sim.js -l 1         # 보통 난이도만
 //   node tools/soccer-sim.js --seed 7
-//   node tools/soccer-sim.js --sweep-speed # 보통 speed 0.84~0.94, 각 200경기
+//   node tools/soccer-sim.js --sweep-speed # 보통 상대 속도 배수 0.84~0.94, 각 200경기
 //
 // Node 내장 모듈만 쓴다 (게임과 같은 무의존 원칙).
 
@@ -102,7 +102,7 @@ const HELP = `동네 축구 밸런스 측정
       --opponent-speed <수>  1P 상대 이동 속도 배수 덮어쓰기
       --home-team <0~7> / --away-team <0~7>  측정 팀 선택
       --home-tactic/--away-tactic <default|high|press|wide>
-      --sweep-speed    보통 speed 0.84~0.94를 0.01 간격으로 측정
+      --sweep-speed    보통 1P 상대 속도 배수 0.84~0.94를 0.01 간격으로 측정
                        기본 경기 수는 속도값당 200 (-n으로 변경 가능)
       --self-test      오프사이드·파울 결정론 시나리오 검사
   -h, --help           이 도움말
@@ -219,9 +219,9 @@ const HARNESS = `
     return aiPlayer(p, botDt, LEVELS[botLevel], true);
   };
 
-  __sim = {
+  globalThis.__sim = {
     setBotLevel: function (n) { botLevel = n; },
-    setLevelSpeed: function (n, speed) { LEVELS[n].speed = speed; },
+    setLevelOpponentSpeed: function (n, speed) { OPPONENT_SPEED_MUL[n] = speed; },
     setGkReach: function (n) { GK_REACH_MUL = n; },
     setOpponentSpeed: function (n) {
       for (var i = 0; i < OPPONENT_SPEED_MUL.length; i++) OPPONENT_SPEED_MUL[i] = n;
@@ -257,7 +257,7 @@ const HARNESS = `
     },
     matchSec: MATCH_SEC,
     levelNames: LEVELS.map(function (l) { return l.name; }),
-    levelSpeeds: LEVELS.map(function (l) { return l.speed; }),
+    strictMode: (function () { return this === undefined; })(),
     selfTest: function () {
       level = 1;
       startMatch('1p');
@@ -355,6 +355,7 @@ const HARNESS = `
       var recordsSummary = summaryText.indexOf('60%') >= 0 &&
         summaryText.indexOf('7/3') >= 0 && summaryText.indexOf('2/1') >= 0;
       return {
+        strictMode:this.strictMode,
         offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
         formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
         tournamentValid:tournamentValid, shootoutRules:shootoutRules,
@@ -389,15 +390,15 @@ function createSimulation(seed) {
 
   // Math.random 은 게임 소스가 로드되는 시점(buildTeams)부터 쓰이므로
   // 앞에서 먼저 갈아끼운다.
-  const full = 'Math.random = __rand;\n' + src + '\n' + HARNESS;
-  vm.runInContext(full, context, { filename:'soccer.js' });
+  vm.runInContext('Math.random = __rand;', context, { filename:'soccer-seed.js' });
+  vm.runInContext(src + '\n' + HARNESS, context, { filename:'soccer.js' });
   return sandbox.__sim;
 }
 
 function runBatch(job) {
   const sim = createSimulation(job.seed);
   sim.setBotLevel(job.botLevel);
-  if (job.speed !== undefined) sim.setLevelSpeed(job.lvl, job.speed);
+  if (job.speed !== undefined) sim.setLevelOpponentSpeed(job.lvl, job.speed);
   if (job.gkReach !== null && job.gkReach !== undefined) sim.setGkReach(job.gkReach);
   if (job.opponentSpeed !== null && job.opponentSpeed !== undefined) {
     sim.setOpponentSpeed(job.opponentSpeed);
