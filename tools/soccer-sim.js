@@ -219,6 +219,14 @@ const HARNESS = `
     return aiPlayer(p, botDt, LEVELS[botLevel], true);
   };
 
+  var offsideChecks = 0, offsideMarks = 0;
+  var gameMarkOffside = markOffside;
+  markOffside = function (p) {
+    offsideChecks++;
+    gameMarkOffside(p);
+    if (offside) offsideMarks++;
+  };
+
   globalThis.__sim = {
     setBotLevel: function (n) { botLevel = n; },
     setLevelOpponentSpeed: function (n, speed) { OPPONENT_SPEED_MUL[n] = speed; },
@@ -236,6 +244,7 @@ const HARNESS = `
     run: function (lvl) {
       level = lvl;
       startMatch('1p');
+      offsideChecks = offsideMarks = 0;
       var dt = 1/60, steps = 0;
       var MAX = 60 * 60 * 30;            // 안전장치: 30분 분량
       while (state !== 'end' && steps < MAX) {
@@ -250,6 +259,8 @@ const HARNESS = `
         events: matchStats.events.slice(),
         stats: {
           offsides: matchStats.offsides.slice(),
+          offsideChecks: [offsideChecks],
+          offsideMarks: [offsideMarks],
           fouls: matchStats.fouls.slice(),
           cards: matchStats.cards.slice()
         }
@@ -276,6 +287,39 @@ const HARNESS = `
       var called = state === 'setpiece' && setpiece && setpiece.type === 'free' &&
                    matchStats.offsides[0] === 1;
 
+      startMatch('1p');
+      passer = teams[0][9]; offender = teams[0][10];
+      var validReceiver = teams[0][8];
+      passer.x = 1050; passer.y = 680;
+      offender.x = 1800; offender.y = 680;
+      validReceiver.x = 1080; validReceiver.y = 760;
+      for (i = 0; i < teams[1].length; i++) teams[1][i].x = 1200 + i * 8;
+      ball.owner = passer; ball.x = passer.x + 42; ball.y = passer.y;
+      markOffside(passer);
+      ball.owner = null; ball.freeCd = 0; validReceiver.trapCd = 0;
+      takePossession(validReceiver);
+      var offsideClearedOnValidTouch = offside === null && ball.owner === validReceiver;
+
+      startMatch('1p');
+      passer = teams[0][9]; offender = teams[0][10];
+      passer.x = 1050; passer.y = 680;
+      offender.x = 1800; offender.y = 680;
+      for (i = 0; i < teams[1].length; i++) teams[1][i].x = 1200 + i * 8;
+      ball.owner = null; ball.x = passer.x + 30; ball.y = passer.y;
+      ball.vx = ball.vy = 0; passer.actPass = 0.1; passer.kickCd = 0;
+      collide(passer);
+      var collisionPassMarked = !!offside && offside.offenders.indexOf(offender) >= 0;
+
+      ball.owner = null; ball.x = offender.x - 30; ball.y = offender.y;
+      ball.vx = 900; ball.vy = 0; ball.freeCd = 0;
+      collide(offender);
+      var fastTouchCalled = state === 'setpiece' && setpiece && setpiece.type === 'free';
+
+      level = 0; offside = null;
+      markOffside(passer);
+      var easyOffsideDisabled = offside === null;
+
+      level = 1;
       startMatch('1p');
       var tackler = teams[1][1], victim = teams[0][1];
       tackler.x = 1000; tackler.y = 680; tackler.vx = 500; tackler.vy = 0;
@@ -368,6 +412,9 @@ const HARNESS = `
       return {
         strictMode:this.strictMode,
         offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
+        offsideClearedOnValidTouch:offsideClearedOnValidTouch,
+        collisionPassMarked:collisionPassMarked, fastTouchCalled:fastTouchCalled,
+        easyOffsideDisabled:easyOffsideDisabled,
         stateAfterGoal:stateAfterGoal, stateAfterHalftime:stateAfterHalftime,
         stateAtNewMatch:stateAtNewMatch,
         formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
@@ -422,7 +469,7 @@ function runBatch(job) {
 
   let w = 0, d = 0, l = 0, gf = 0, ga = 0, steps = 0;
   const setpieces = {};
-  const eventTotals = { offsides:0, fouls:0, cards:0 };
+  const eventTotals = { offsides:0, offsideChecks:0, offsideMarks:0, fouls:0, cards:0 };
   let sampleEvents = [];
   const t0 = Date.now();
   for (let i = 0; i < job.n; i++) {
@@ -634,6 +681,9 @@ async function main() {
     const avg = rows.reduce((s, r) => s + r.eventTotals[key] / r.n, 0) / rows.length;
     return `${key}=${avg.toFixed(2)}`;
   }).join(' '));
+  console.log('  난이도별 오프사이드 ' + rows.map(r =>
+    `${LEVEL_NAMES[r.lvl]}=${(r.eventTotals.offsides / r.n).toFixed(2)}`
+  ).join(' '));
   printNormalResults(rows);
 }
 

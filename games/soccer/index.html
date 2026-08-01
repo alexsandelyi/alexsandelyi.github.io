@@ -978,6 +978,11 @@ const TOUCH_V = 430, PASS_V = 950, SHOOT_V = 1650;
 const TRAP_R = R_PLAYER + R_BALL + 7, TRAP_V = 620;
 const OWNER_SPEED = 0.88, SPRINT_SPEED = 1.25, REOWN_CD = 0.35;
 const OPPONENT_SPEED_MUL = [1, 1, 1];
+// 평소에는 라인 초과분을 되돌리되, 공을 소유한 동안 FW가 짧은 침투
+// 구간을 갖는다. 어려울수록 구간이 짧고 드물어 라인을 더 잘 지킨다.
+const OFFSIDE_DISCIPLINE = [0, 0.72, 0.90];
+const OFFSIDE_RUN_PERIOD = [0, 2, 4];
+const OFFSIDE_RUN_REWARD = [0, 260, 120];
 const HUMAN_SHOOT_MUL = [1.18, 1.40, 1.18];
 const HUMAN_TACKLE_BONUS = [0, 0.28, 0];
 const HUMAN_GK_REACH_MUL = [1, 1.35, 1];
@@ -1093,7 +1098,8 @@ function updateBall(dt) {
 function takePossession(p) {
   if (p.trapCd > 0 || ball.freeCd > 0) return false;
   if (callOffside(p)) return true;
-  if (offside && offside.side !== p.side) offside = null;
+  // 후보가 아닌 선수에게 패스가 정상 도달하면 이전 후보는 더는 유효하지 않다.
+  if (offside) offside = null;
   ball.owner = p; ball.lastTouch = p;
   ball.shotSide = -1; ball.shotCounted = false;
   ball.vx = p.vx; ball.vy = p.vy;
@@ -1250,8 +1256,11 @@ function passTarget(p, through = false) {
     // 패스도 적극적으로 선택한다. 기본 폭(.30) 이하는 기존 판정을 유지한다.
     const outletReward = Math.abs(t.y - FH / 2) *
       Math.max(0, tactic.width - .30) * 4;
+    const runReward = level > 0 && t.role === 'FW' &&
+      (Math.floor(clock / 4) + t.no) % OFFSIDE_RUN_PERIOD[level] === 0
+      ? OFFSIDE_RUN_REWARD[level] : 0;
     const sc = d - ahead * (through ? 0.95 : 0.6) +
-      laneRisk + edgePenalty - outletReward;
+      laneRisk + edgePenalty - outletReward - runReward;
     if (sc < bestScore) { bestScore = sc; best = t; }
   }
   return best;
@@ -1305,6 +1314,7 @@ function collide(p) {
     ? HUMAN_GK_REACH_MUL[level] : 1;
   const d = Math.hypot(dx, dy), min = p.reach * gkAssist + R_BALL;
   if (d >= min || d === 0) return;
+  if (!ball.owner && callOffside(p)) return;
   const nx = dx / d, ny = dy / d;
 
   if (ball.owner) {
@@ -1351,6 +1361,7 @@ function collide(p) {
       vx = Math.cos(ang) * SHOOT_V * p.shotMul; vy = Math.sin(ang) * SHOOT_V * p.shotMul;
   } else if (p.actPass > 0 && p.kickCd <= 0) {
     p.actPass = 0; p.kickCd = 0.25;
+    markOffside(p);
     const t = passTarget(p);
     if (t) {
       const ang = Math.atan2(t.y - p.y, t.x - p.x);
@@ -1365,6 +1376,7 @@ function collide(p) {
     }
   } else if (p.actThrough > 0 && p.kickCd <= 0) {
     p.actThrough = 0; p.kickCd = 0.25;
+    markOffside(p);
     const t = passTarget(p, true);
     const tx = t ? t.x + attackDir[p.side] * 150 : p.x + attackDir[p.side] * 600;
     const ty = t ? t.y : p.y;
@@ -1491,7 +1503,20 @@ function slotTarget(p) {
   }
   if (level > 0 && (p.role === 'MF' || p.role === 'FW')) {
     const line = secondLastDefenderLine(p.side);
-    tx = attackDir[p.side] === 1 ? Math.min(tx, line - 36) : Math.max(tx, line + 36);
+    const dir = attackDir[p.side];
+    const safe = line - dir * 36;
+    const excess = (tx - safe) * dir;
+    const phase = Math.floor(clock / 4) + p.no;
+    const attackingSide = ball.owner ? ball.owner.side :
+      (ball.lastTouch ? ball.lastTouch.side : -1);
+    const riskyRun = p.role === 'FW' && attackingSide === p.side &&
+      ball.owner !== p && phase % OFFSIDE_RUN_PERIOD[level] === 0;
+    if (riskyRun) {
+      const risky = line + dir * 160;
+      if ((risky - tx) * dir > 0) tx = risky;
+    } else if (excess > 0) {
+      tx = safe + dir * excess * (1 - OFFSIDE_DISCIPLINE[level]);
+    }
   }
   return {
     x:Math.max(R_PLAYER, Math.min(FW - R_PLAYER, tx)),
