@@ -285,6 +285,17 @@ const HARNESS = `
       separateAll();
       var foul = state === 'setpiece' && setpiece && matchStats.fouls[1] === 1;
       var card = matchStats.cards[1] === 1 && tackler.yellow === 1;
+      tackler.energy = 0.2;
+      state = 'goal'; goalTimer = 0; lastScorer = 0;
+      step(1/60);
+      var stateAfterGoal = tackler.yellow === 1 && tackler.energy === 0.2;
+      state = 'halftime'; goalTimer = 0;
+      step(1/60);
+      var stateAfterHalftime = tackler.yellow === 1 && tackler.energy === 0.2;
+      startMatch('1p');
+      var stateAtNewMatch = teams[0].concat(teams[1]).every(function (p) {
+        return p.yellow === 0 && p.energy === 1;
+      });
       var formationsValid = Object.keys(FORMATIONS).every(function (name) {
         selectedFormation[0] = name; selectedFormation[1] = name;
         buildTeams(); resetPositions(0);
@@ -357,6 +368,8 @@ const HARNESS = `
       return {
         strictMode:this.strictMode,
         offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
+        stateAfterGoal:stateAfterGoal, stateAfterHalftime:stateAfterHalftime,
+        stateAtNewMatch:stateAtNewMatch,
         formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
         tournamentValid:tournamentValid, shootoutRules:shootoutRules,
         storageMigrated:storageMigrated, leagueSchedule:leagueSchedule,

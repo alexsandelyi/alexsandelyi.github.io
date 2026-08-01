@@ -596,7 +596,6 @@ function resetPositions(kickSide) {
     p.kickCd = p.trapCd = p.tackleCd = p.tackleT = 0;
     p.actShoot = p.actPass = p.actThrough = 0;
     p.shootHeld = false; p.shootCharge = 0;
-    p.yellow = 0; p.energy = 1;
     // 킥오프: 공을 넣는 팀만 센터서클 안으로 한 명 들여보낸다
     if (p.role === 'FW' && p.no === 9 && side === kickSide) {
       p.x = FW / 2 - attackDir[side] * R_PLAYER * 2;
