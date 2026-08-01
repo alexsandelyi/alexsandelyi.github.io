@@ -226,8 +226,8 @@ const C = {
 };
 
 // AI 난이도. 상대 팀 11명 전체에 적용된다(우리 팀 동료는 항상 '보통' 수준).
-// speed=최대속도 배수, react=목표 재계산 간격(사람의 반응 시간에 해당),
-// aimErr=공을 향할 때의 조준 오차, shoot=슛·패스 시도 확률, gk=골키퍼 반응.
+// react=목표 재계산 간격, aimErr=공을 향할 때의 조준 오차,
+// gk=골키퍼 반응. 물리 속도는 팀 능력치, 행동 시도율은 공통 상수다.
 // 값은 결정론적 봇으로 난이도별 200경기 이상 자동 대전해 검증한다.
 // 목표 승률 80% / 53% / 23%, 경기당 총 5~6골.
 //
@@ -1175,10 +1175,11 @@ function takeSetpiece(kind = 'pass') {
   if (!setpiece) return;
   const s = setpiece, p = s.taker;
   let tx, ty, v;
-  const target = passTarget(p, kind === 'through');
+  const needsTarget = s.type === 'kickoff' || (s.type === 'free' && kind !== 'shoot');
+  const target = needsTarget ? passTarget(p, kind === 'through') : null;
+  const isShot = s.type === 'penalty' || kind === 'shoot';
   if (s.type === 'penalty') {
     const a = aimAt(s.side); tx = a.x; ty = a.y; v = SHOOT_V;
-    matchStats.shots[s.side]++;
   } else if (s.type === 'throw') {
     tx = Math.max(180, Math.min(FW - 180, ball.x + attackDir[s.side] * 180));
     ty = ball.y < FH / 2 ? 350 : FH - 350;
@@ -1196,7 +1197,7 @@ function takeSetpiece(kind = 'pass') {
     ty = mate ? mate.y : p.y; v = 650;
   } else if (target && kind !== 'shoot') {
     tx = target.x + (kind === 'through' ? attackDir[s.side] * 130 : 0);
-    ty = target.y; v = s.type === 'throw' ? 720 : PASS_V * 0.9;
+    ty = target.y; v = PASS_V * 0.9;
   } else {
     const a = aimAt(s.side); tx = a.x; ty = a.y;
     v = kind === 'shoot' ? SHOOT_V * 0.85 : PASS_V * 0.8;
@@ -1204,9 +1205,9 @@ function takeSetpiece(kind = 'pass') {
   const ang = Math.atan2(ty - ball.y, tx - ball.x);
   ball.lastTouch = p; ball.owner = null; ball.freeCd = 0.12;
   ball.vx = Math.cos(ang) * v; ball.vy = Math.sin(ang) * v;
-  ball.shotSide = kind === 'shoot' ? p.side : -1;
+  ball.shotSide = isShot ? p.side : -1;
   ball.shotCounted = false;
-  if (kind === 'shoot') matchStats.shots[p.side]++;
+  if (isShot) matchStats.shots[p.side]++;
   if (matchStats.events.length < 20)
     matchStats.events.push({ event:'kick', type:s.type, vx:Math.round(ball.vx), vy:Math.round(ball.vy) });
   p.kickCd = 0.3; setpiece = null; state = 'play';
@@ -1474,15 +1475,18 @@ function nearestToBall(side, exclude) {
 }
 
 function nearestChasers(side, exclude) {
-  return teams[side]
-    .filter(p => !p.isGK && p !== exclude)
-    .sort((a, b) => Math.hypot(ball.x - a.x, ball.y - a.y) -
-                    Math.hypot(ball.x - b.x, ball.y - b.y))
-    .slice(0, teamTactics(side).chasers);
+  let first = null, second = null, d1 = Infinity, d2 = Infinity;
+  for (const p of teams[side]) {
+    if (p.isGK || p === exclude) continue;
+    const d = Math.hypot(ball.x - p.x, ball.y - p.y);
+    if (d < d1) { second = first; d2 = d1; first = p; d1 = d; }
+    else if (d < d2) { second = p; d2 = d; }
+  }
+  return teamTactics(side).chasers > 1 && second ? [first, second] : [first];
 }
 
 // 포메이션 위치를 공 쪽으로 이동시킨 목표 지점
-function slotTarget(p) {
+function slotTarget(p, offsideLine = null) {
   const h = homePos(p);
   const tactic = teamTactics(p.side);
   const shiftX = (ball.x - FW / 2) * tactic.press;
@@ -1500,7 +1504,7 @@ function slotTarget(p) {
       : Math.max(tx, FW * (1 - tactic.line));
   }
   if (level > 0 && (p.role === 'MF' || p.role === 'FW')) {
-    const line = secondLastDefenderLine(p.side);
+    const line = offsideLine ?? secondLastDefenderLine(p.side);
     const dir = attackDir[p.side];
     const safe = line - dir * 36;
     const excess = (tx - safe) * dir;
@@ -1536,7 +1540,7 @@ function gkTarget(p) {
   };
 }
 
-function aiPlayer(p, dt, L, isChaser) {
+function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
   p.aiT -= dt;
   if (p.aiT <= 0) {
     p.aiT = L.react * (p.isGK ? 0.5 : 1);
@@ -1555,7 +1559,7 @@ function aiPlayer(p, dt, L, isChaser) {
         y:ball.y + (Math.random() * 2 - 1) * L.aimErr
       };
     } else {
-      t = slotTarget(p);
+      t = slotTarget(p, offsideLine);
     }
     p.aiTx = Math.max(R_PLAYER, Math.min(FW - R_PLAYER, t.x));
     p.aiTy = Math.max(R_PLAYER, Math.min(FH - R_PLAYER, t.y));
@@ -1712,6 +1716,8 @@ function step(dt) {
     new Set(nearestChasers(0, null)),
     new Set(nearestChasers(1, null))
   ];
+  const offsideLine = level > 0
+    ? [secondLastDefenderLine(0), secondLastDefenderLine(1)] : [null, null];
 
   for (const side of [0, 1]) {
     const human = (side === 0) || (side === 1 && mode === '2p');
@@ -1729,10 +1735,11 @@ function step(dt) {
           p.speedMul * ownerMul * (sprinting ? SPRINT_SPEED : 1));
       } else if (human) {
         // 사람 팀의 나머지 선수는 아군 AI (난이도와 무관하게 보통 수준)
-        const a = aiPlayer(p, dt, LEVELS[1], chaser[side].has(p) && p !== ctrl[side]);
+        const a = aiPlayer(p, dt, LEVELS[1],
+          chaser[side].has(p) && p !== ctrl[side], offsideLine[side]);
         movePlayer(p, a.ax, a.ay, dt, p.speedMul);
       } else {
-        const a = aiPlayer(p, dt, L, chaser[side].has(p));
+        const a = aiPlayer(p, dt, L, chaser[side].has(p), offsideLine[side]);
         movePlayer(p, a.ax, a.ay, dt,
           p.speedMul * (mode === '1p' ? OPPONENT_SPEED_MUL[level] : 1));
       }
@@ -1817,7 +1824,7 @@ function draw() {
   if (!view.whole) drawMinimap();
   if (state === 'goal') drawGoalText();
   if (state === 'setpiece') drawSetpieceText();
-  if (state === 'halftime') drawBannerText('하프타임', C.gold || '#F2CE7A');
+  if (state === 'halftime') drawBannerText('하프타임', C.away);
   if (notice.timer > 0) drawNotice();
 }
 
@@ -1887,8 +1894,12 @@ function drawPlayer(p) {
     ctx.restore();
   }
   if (p.yellow) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (view.rot) ctx.rotate(Math.PI / 2);
     ctx.fillStyle = '#F2CE4A';
-    ctx.fillRect(p.x + R_PLAYER * 0.45, p.y - R_PLAYER * 1.15, 12, 17);
+    ctx.fillRect(R_PLAYER * 0.45, -R_PLAYER * 1.15, 12, 17);
+    ctx.restore();
   }
 
   // 등번호는 세워서 그린다

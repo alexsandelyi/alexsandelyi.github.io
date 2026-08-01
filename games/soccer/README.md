@@ -1,6 +1,6 @@
 # 동네 축구 — 설계 문서 목차
 
-`index.html`(892줄, 의존성 없는 Canvas 2D 한 파일)의 확장 설계.
+`index.html`(2091줄, 의존성 없는 Canvas 2D 한 파일)의 확장 설계.
 문서 작성 규칙은 `AGENTS.md` 를 따른다 — kebab-case, 파일당 200줄 이하,
 한 파일에 한 주제.
 

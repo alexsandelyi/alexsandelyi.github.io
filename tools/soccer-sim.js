@@ -340,6 +340,15 @@ const HARNESS = `
       var stateAtNewMatch = teams[0].concat(teams[1]).every(function (p) {
         return p.yellow === 0 && p.energy === 1;
       });
+
+      startMatch('1p');
+      matchStats.shots[1] = matchStats.onTarget[1] = 0;
+      beginSetpiece('penalty', 1, { x:FW - PEN_SPOT, y:FH / 2 });
+      takeSetpiece('pass');
+      var penaltyShotCounted = ball.shotSide === 1 && matchStats.shots[1] === 1;
+      goal(1);
+      var penaltyOnTarget = matchStats.onTarget[1] === 1;
+      startMatch('1p');
       var formationsValid = Object.keys(FORMATIONS).every(function (name) {
         selectedFormation[0] = name; selectedFormation[1] = name;
         buildTeams(); resetPositions(0);
@@ -417,6 +426,7 @@ const HARNESS = `
         easyOffsideDisabled:easyOffsideDisabled,
         stateAfterGoal:stateAfterGoal, stateAfterHalftime:stateAfterHalftime,
         stateAtNewMatch:stateAtNewMatch,
+        penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
         formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
         tournamentValid:tournamentValid, shootoutRules:shootoutRules,
         storageMigrated:storageMigrated, leagueSchedule:leagueSchedule,
