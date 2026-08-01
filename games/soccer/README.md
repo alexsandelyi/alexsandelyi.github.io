@@ -16,6 +16,7 @@
 | [match-rules.md](match-rules.md) | 경기 규칙과 심판. 아웃, 세트피스, 오프사이드, 파울 |
 | [team-tactics.md](team-tactics.md) | 팀·전술·선수 상성. 능력치, 포메이션, 전술 슬라이더 |
 | [game-modes.md](game-modes.md) | 모드와 진행 구조. 토너먼트, 리그, 승부차기, 저장 |
+| [realistic-scale.md](realistic-scale.md) | 현실 계측치 전환 계획. 크기·속도·카메라·수비 재설계 |
 | [roadmap.md](roadmap.md) | 구현 순서, 단계별 완료 기준, 미결 질문 |
 
 ## 읽는 순서
