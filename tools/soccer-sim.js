@@ -405,6 +405,15 @@ const HARNESS = `
       var separatedDrawScale = Math.abs(drawRadius(R_PLAYER, DRAW_PLAYER_MIN_PX) - 36) < 1e-9 &&
         Math.abs(drawRadius(R_BALL, DRAW_BALL_MIN_PX) - 16) < 1e-9;
       view = oldView;
+      var landscapeScaleA = cameraScale(1280, 720, false, 1);
+      var landscapeScaleB = cameraScale(1920, 1080, false, 1);
+      var portraitScaleA = cameraScale(390, 844, true, 1);
+      var portraitScaleB = cameraScale(768, 1024, true, 1);
+      var cameraViewportStable =
+        Math.abs(1280 / landscapeScaleA - CAMERA_LANDSCAPE_W) < 1e-9 &&
+        Math.abs(1920 / landscapeScaleB - CAMERA_LANDSCAPE_W) < 1e-9 &&
+        Math.abs(390 / portraitScaleA - CAMERA_PORTRAIT_W) < 1e-9 &&
+        Math.abs(768 / portraitScaleB - CAMERA_PORTRAIT_W) < 1e-9;
       var physicalScale = R_PLAYER === 6 && R_BALL === 2.2 && P_ACCEL === 150 &&
         P_MAX === 190 && P_FRICTION === 4 && B_FRICTION === .82 && B_MAX === 800 &&
         TOUCH_V === 120 && PASS_V === 340 && SHOOT_V === 660 && GOAL_H === 146 &&
@@ -464,6 +473,7 @@ const HARNESS = `
         penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
         physicalScale:physicalScale, straightSpeed:straightSpeed,
         collisionRadius:collisionRadius, separatedDrawScale:separatedDrawScale,
+        cameraViewportStable:cameraViewportStable,
         matchLengthMigration:matchLengthMigration,
         formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
         tournamentValid:tournamentValid, shootoutRules:shootoutRules,

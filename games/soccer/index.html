@@ -209,6 +209,8 @@ let GK_REACH_MUL = 6.0;
 // 물리 축척과 화면 가독성을 분리한다. 실제 반경은 충돌에만 쓰고 그리기는
 // CSS px 최소 지름을 보장한다. 카메라 줌은 2단계에서 별도로 정한다.
 const DRAW_PLAYER_MIN_PX = 18, DRAW_BALL_MIN_PX = 8;
+const CAMERA_LANDSCAPE_W = 40 * M, CAMERA_PORTRAIT_W = 26 * M;
+const CAMERA_LEAD_MAX = 6 * M;
 
 let MATCH_SEC = 600;
 const GOAL_PAUSE = 1.6;
@@ -252,9 +254,8 @@ function resize() {
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   const rot = h > w;
-  // 회전 시 경기장 길이(FW)는 화면 높이에 놓인다.
-  const fit = rot ? Math.min(h / FW, w / FH) : Math.min(w / FW, h / FH);
-  view = { rot, scale:fit * dpr, w, h, dpr, whole:true };
+  const scale = cameraScale(w, h, rot, dpr);
+  view = { rot, scale, w, h, dpr };
 }
 window.addEventListener('resize', resize);
 if (typeof ResizeObserver !== 'undefined')
@@ -268,12 +269,25 @@ function viewSpan() {
     : { x:canvas.width / s,  y:canvas.height / s };
 }
 
+function cameraScale(w, h, rot, dpr = 1) {
+  const primarySpan = rot ? CAMERA_PORTRAIT_W : CAMERA_LANDSCAPE_W;
+  const primary = w * dpr / primarySpan;
+  // 아주 납작하거나 긴 창에서도 반대 축으로 경기장 밖을 보이지 않는다.
+  const secondary = h * dpr / (rot ? FW : FH);
+  return Math.max(primary, secondary);
+}
+
 function updateCamera(dt) {
   const sp = viewSpan();
+  const speed = Math.hypot(ball.vx, ball.vy);
+  const lead = Math.min(CAMERA_LEAD_MAX, speed * .22);
+  const leadX = speed > 1 ? ball.vx / speed * lead : 0;
+  const leadY = speed > 1 ? ball.vy / speed * lead : 0;
+  const focusX = ball.x + leadX, focusY = ball.y + leadY;
   // 공을 따라가되 경기장 밖이 보이지 않게 가둔다.
   // 보이는 범위가 경기장보다 크면 그 축은 가운데 고정.
-  const tx = sp.x >= FW ? FW / 2 : Math.max(sp.x / 2, Math.min(FW - sp.x / 2, ball.x));
-  const ty = sp.y >= FH ? FH / 2 : Math.max(sp.y / 2, Math.min(FH - sp.y / 2, ball.y));
+  const tx = sp.x >= FW ? FW / 2 : Math.max(sp.x / 2, Math.min(FW - sp.x / 2, focusX));
+  const ty = sp.y >= FH ? FH / 2 : Math.max(sp.y / 2, Math.min(FH - sp.y / 2, focusY));
   const k = 1 - Math.exp(-7 * dt);     // 부드럽게 따라감(즉시 스냅은 눈이 피로하다)
   cam.x += (tx - cam.x) * k;
   cam.y += (ty - cam.y) * k;
@@ -1816,8 +1830,7 @@ function draw() {
   drawBall();
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  // 경기장 전체가 이미 보이면 미니맵은 군더더기다
-  if (!view.whole) drawMinimap();
+  drawMinimap();
   if (state === 'goal') drawGoalText();
   if (state === 'setpiece') drawSetpieceText();
   if (state === 'halftime') drawBannerText('하프타임', C.away);
@@ -1933,26 +1946,32 @@ function drawBall() {
 // 위치는 우측 상단 — 아래쪽은 조이스틱(좌)과 슛·패스 버튼(우)이 차지한다.
 function drawMinimap() {
   const pad = 10 * view.dpr;
-  const mw = Math.min(canvas.width * 0.34, 260 * view.dpr);
+  const mw = Math.min(canvas.width * 0.40, 320 * view.dpr);
   const mh = mw * (FH / FW);
   const mx = canvas.width - mw - pad, my = pad;
   const sx = mw / FW, sy = mh / FH;
 
   ctx.fillStyle = C.mapBg;
   ctx.fillRect(mx, my, mw, mh);
-  ctx.strokeStyle = C.mapLine; ctx.lineWidth = 1 * view.dpr;
+  ctx.strokeStyle = '#52777E'; ctx.lineWidth = 1.4 * view.dpr;
   ctx.strokeRect(mx + .5, my + .5, mw - 1, mh - 1);
   ctx.beginPath(); ctx.moveTo(mx + mw / 2, my); ctx.lineTo(mx + mw / 2, my + mh); ctx.stroke();
 
   // 현재 화면에 보이는 범위
   const sp = viewSpan();
-  ctx.strokeStyle = 'rgba(242,247,244,.35)';
+  ctx.strokeStyle = 'rgba(242,247,244,.72)';
+  ctx.lineWidth = 1.5 * view.dpr;
   ctx.strokeRect(mx + (cam.x - sp.x / 2) * sx, my + (cam.y - sp.y / 2) * sy, sp.x * sx, sp.y * sy);
 
   const r = Math.max(DRAW_PLAYER_MIN_PX * .12 * view.dpr, mw * 0.012);
   for (const side of [0, 1]) for (const p of teams[side]) {
     ctx.fillStyle = p.side === 0 ? C.home : C.away;
     ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy, r, 0, Math.PI * 2); ctx.fill();
+    if (p === ctrl[0] || (mode === '2p' && p === ctrl[1])) {
+      ctx.strokeStyle = '#F2F7F4'; ctx.lineWidth = 1.8 * view.dpr;
+      ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy,
+        r + 2.2 * view.dpr, 0, Math.PI * 2); ctx.stroke();
+    }
   }
   ctx.fillStyle = C.ball;
   const br = Math.max(DRAW_BALL_MIN_PX * .15 * view.dpr, r * .7);
