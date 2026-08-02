@@ -74,7 +74,7 @@ git reset --hard 같은 파괴적 명령을 쓰지 않는다.
   R_BALL            13      2.2    반지름 0.11m → 지름 0.22m
   P_MAX            470    190      9.5m/s = 34km/h
   P_ACCEL         2100    150      7.5m/s²
-  P_FRICTION         8      4      무입력 감속 시정수
+  P_FRICTION         8      4      무입력 감속률 4s⁻¹
   B_FRICTION      0.55   0.82      초당 속도 배율(잔디 저항)
   B_MAX           2000    800      40m/s = 144km/h
   TOUCH_V          430    120      6m/s, 몸에 맞고 튀는 속도
@@ -282,7 +282,8 @@ games/soccer/realistic-scale.md 의 「2. 카메라」를 따른다.
 저장소 ilbbangsite. 현실 계측치 전환 3단계, 이동 행동을 구현한다.
 2단계(카메라)가 끝난 상태를 전제로 한다.
 
-games/soccer/realistic-scale.md 의 「3. 이동 행동」을 따른다.
+games/soccer/realistic-scale.md 의 「3. 이동 행동」과
+games/soccer/movement-metrics.md 의 계측 정의를 따른다.
 
 문제: 최고속도를 34km/h 로 묶어도 프로토타입 평균이 17km/h 였다.
 실제 프로는 7km/h 다. AI 가 항상 전속으로 달리기 때문이다.
@@ -305,7 +306,8 @@ games/soccer/realistic-scale.md 의 「3. 이동 행동」을 따른다.
    체력은 경기 시작에만 초기화한다 — 킥오프마다 회복시키지 않는다.
 
 끝난 상태:
-- 200경기 측정에서 평균 이동 7~9km/h, 걷는 시간 60~70%, 최고 34km/h 이하.
+- 난이도마다 200경기 측정에서 평균 이동 7~9km/h, 걷는 시간 60~70%,
+  최고 34km/h 이하. 표본·속도 구간·집계식은 movement-metrics.md 그대로다.
 - 후반 평균 속도가 전반보다 낮다(체력 효과). 수치로 보고한다.
 - 브라우저에서 걷기·조깅·달리기·스프린트가 눈으로 구분된다.
 - 측정 도구가 속도 분포를 출력하도록 확장한다(구간별 비율).
