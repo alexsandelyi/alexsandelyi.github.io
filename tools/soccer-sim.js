@@ -275,6 +275,10 @@ const HARNESS = `
         events: matchStats.events.slice(),
         movement: movement,
         stats: {
+          shots: matchStats.shots.slice(),
+          shotGoals: matchStats.shotGoals.slice(),
+          nonShotGoals: matchStats.nonShotGoals.slice(),
+          blocks: matchStats.blocks.slice(),
           offsides: matchStats.offsides.slice(),
           offsideChecks: [offsideChecks],
           offsideMarks: [offsideMarks],
@@ -365,6 +369,11 @@ const HARNESS = `
       var penaltyShotCounted = ball.shotSide === 1 && matchStats.shots[1] === 1;
       goal(1);
       var penaltyOnTarget = matchStats.onTarget[1] === 1;
+      ball.shotSide = -1; ball.shotCounted = false;
+      goal(0);
+      var goalClassification = score.every(function (goals, side) {
+        return goals === matchStats.shotGoals[side] + matchStats.nonShotGoals[side];
+      }) && matchStats.shotGoals[1] === 1 && matchStats.nonShotGoals[0] === 1;
       startMatch('1p');
       var formationsValid = Object.keys(FORMATIONS).every(function (name) {
         selectedFormation[0] = name; selectedFormation[1] = name;
@@ -449,7 +458,8 @@ const HARNESS = `
       var physicalScale = R_PLAYER === 6 && R_BALL === 2.2 && P_ACCEL === 150 &&
         P_MAX === 190 && P_FRICTION === 4 && B_FRICTION === .82 && B_MAX === 800 &&
         TOUCH_V === 120 && PASS_V === 340 && SHOOT_V === 660 && GOAL_H === 146 &&
-        GK_REACH_MUL === 6 && teams[0].concat(teams[1]).every(function (p) {
+        GK_REACH_MUL === 6 && TACKLE_TRIGGER === 32 && SHOT_BLOCK_REACH === 36 &&
+        teams[0].concat(teams[1]).every(function (p) {
           return p.speedMul <= 1;
         });
       var rounds = makeLeagueRounds(8), pairCounts = {};
@@ -505,6 +515,7 @@ const HARNESS = `
         stateAfterGoal:stateAfterGoal, stateAfterHalftime:stateAfterHalftime,
         stateAtNewMatch:stateAtNewMatch,
         penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
+        goalClassification:goalClassification,
         physicalScale:physicalScale, straightSpeed:straightSpeed,
         movementPaces:movementPaces,
         collisionRadius:collisionRadius, separatedDrawScale:separatedDrawScale,
@@ -562,7 +573,10 @@ function runBatch(job) {
 
   let w = 0, d = 0, l = 0, gf = 0, ga = 0, steps = 0;
   const setpieces = {};
-  const eventTotals = { offsides:0, offsideChecks:0, offsideMarks:0, fouls:0, cards:0 };
+  const eventTotals = {
+    shots:0, shotGoals:0, nonShotGoals:0, blocks:0,
+    offsides:0, offsideChecks:0, offsideMarks:0, fouls:0, cards:0
+  };
   const movement = { count:0, sum:0, max:0, bins:[0,0,0,0], halfCount:[0,0], halfSum:[0,0] };
   let sampleEvents = [];
   const t0 = Date.now();
@@ -643,6 +657,54 @@ async function runJobs(jobs, onDone) {
   });
 }
 
+function measurementChunks(n) {
+  const count = Math.min(n, Math.max(1, os.availableParallelism() - 1));
+  const base = Math.floor(n / count), extra = n % count;
+  return Array.from({ length:count }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
+function chunkSeed(seed, index) {
+  return index === 0 ? seed : (seed + Math.imul(index, 0x9e3779b9)) >>> 0;
+}
+
+function combineRows(parts) {
+  const groups = new Map();
+  for (const row of parts) {
+    const key = `${row.lvl}:${row.speed ?? ''}`;
+    let out = groups.get(key);
+    if (!out) {
+      out = {
+        lvl:row.lvl, speed:row.speed, w:0, d:0, l:0, gf:0, ga:0, n:0,
+        matchSec:row.matchSec, avgSteps:0, setpieces:{}, sampleEvents:[],
+        eventTotals:{}, movement:{
+          count:0, sum:0, max:0, bins:[0,0,0,0],
+          halfCount:[0,0], halfSum:[0,0]
+        }, secs:0
+      };
+      groups.set(key, out);
+    }
+    out.w += row.w; out.d += row.d; out.l += row.l;
+    out.gf += row.gf; out.ga += row.ga;
+    out.avgSteps += row.avgSteps * row.n; out.n += row.n;
+    out.secs = Math.max(out.secs, row.secs);
+    if (!out.sampleEvents.length) out.sampleEvents = row.sampleEvents;
+    for (const [name, value] of Object.entries(row.setpieces))
+      out.setpieces[name] = (out.setpieces[name] || 0) + value;
+    for (const [name, value] of Object.entries(row.eventTotals))
+      out.eventTotals[name] = (out.eventTotals[name] || 0) + value;
+    const m = row.movement, om = out.movement;
+    om.count += m.count; om.sum += m.sum; om.max = Math.max(om.max, m.max);
+    for (let i = 0; i < 4; i++) om.bins[i] += m.bins[i];
+    for (let i = 0; i < 2; i++) {
+      om.halfCount[i] += m.halfCount[i]; om.halfSum[i] += m.halfSum[i];
+    }
+  }
+  return Array.from(groups.values()).map(row => {
+    row.avgSteps /= row.n;
+    return row;
+  }).sort((a, b) => a.lvl - b.lvl || (a.speed || 0) - (b.speed || 0));
+}
+
 function printNormalResults(rows) {
   console.log('\n난이도  승  무  패   승률(95% CI)          득점  실점  총득점/경기  목표');
   console.log('─'.repeat(76));
@@ -668,6 +730,20 @@ function printNormalResults(rows) {
     `전체 경기당 총 득점 ${allGoals.toFixed(2)} ` +
     `(목표 ${TARGET_GOALS[0]}~${TARGET_GOALS[1]})`
   );
+
+  console.log('\n슛 분류 (양 팀 합계)');
+  console.log('난이도  슛/경기  슛득점 비슛득점  성공률  비슛비율  블록/경기');
+  for (const r of rows) {
+    const s = r.eventTotals;
+    const goals = s.shotGoals + s.nonShotGoals;
+    console.log(
+      `${LEVEL_NAMES[r.lvl].padEnd(4)}  ${(s.shots / r.n).toFixed(2).padStart(7)} ` +
+      `${String(s.shotGoals).padStart(6)} ${String(s.nonShotGoals).padStart(8)}  ` +
+      `${pct(s.shotGoals / Math.max(1, s.shots))}% ` +
+      `${pct(s.nonShotGoals / Math.max(1, goals))}%  ` +
+      `${(s.blocks / r.n).toFixed(2).padStart(7)}`
+    );
+  }
 
   console.log('\n이동 속도 (play 상태·22명 시간 가중)');
   console.log('난이도  평균   최고   걷기   조깅   달리기 스프린트  전반   후반');
@@ -771,25 +847,27 @@ async function main() {
 
   console.log('동네 축구 밸런스 측정');
   console.log(`  경기 수  난이도당 ${opt.n}`);
-  console.log(`  시드     ${opt.seed} (각 난이도에서 같은 난수열로 초기화)`);
+  console.log(`  시드     ${opt.seed} (청크별 파생 시드를 난이도마다 동일 적용)`);
   console.log(`  사람 자리 봇  ${LEVEL_NAMES[opt.botLevel]} 수준`);
   if (opt.gkReach !== null) console.log(`  골키퍼 도달 배수 ${opt.gkReach}`);
   if (opt.opponentSpeed !== null) console.log(`  상대 이동 배수 ${opt.opponentSpeed}`);
   console.log(`  팀       ${opt.homeTeam} vs ${opt.awayTeam}`);
   console.log(`  전술     ${opt.homeTactic} vs ${opt.awayTactic}`);
-  console.log(`  병렬 작업 ${workerLimit(opt.levels.length)}개`);
-  const jobs = opt.levels.map(lvl => ({
-    lvl, n:opt.n, seed:opt.seed, botLevel:opt.botLevel,
+  const chunks = measurementChunks(opt.n);
+  const jobs = opt.levels.flatMap(lvl => chunks.map((n, chunk) => ({
+    lvl, n, chunk, seed:chunkSeed(opt.seed, chunk), botLevel:opt.botLevel,
     gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed,
-    homeTeam:opt.homeTeam, awayTeam:opt.awayTeam
-    ,homeTactic:opt.homeTactic, awayTactic:opt.awayTactic
-  }));
-  const rows = await runJobs(jobs, (row, done, total) => {
+    homeTeam:opt.homeTeam, awayTeam:opt.awayTeam,
+    homeTactic:opt.homeTactic, awayTactic:opt.awayTactic
+  })));
+  console.log(`  병렬 작업 ${workerLimit(jobs.length)}개 · 난이도당 ${chunks.length}청크`);
+  const parts = await runJobs(jobs, (row, done, total) => {
     console.log(
-      `  [${done}/${total}] ${LEVEL_NAMES[row.lvl]} ${row.n}경기 완료 ` +
+      `  [${done}/${total}] ${LEVEL_NAMES[row.lvl]} ${row.n}경기 청크 완료 ` +
       `(${row.secs.toFixed(1)}초)`
     );
   });
+  const rows = combineRows(parts);
   console.log(`  경기 길이 ${rows[0].matchSec}초`);
   console.log(`  평균 step 호출 ${Math.round(rows.reduce((s, r) => s + r.avgSteps, 0) / rows.length)}`);
   console.log('  경기당 세트피스 ' + Object.keys(rows[0].setpieces).map(type => {
@@ -797,7 +875,8 @@ async function main() {
     return `${type}=${avg.toFixed(1)}`;
   }).join(' '));
   if (rows[0].n === 1) console.log('  이벤트 표본 ' + JSON.stringify(rows[0].sampleEvents));
-  console.log('  경기당 판정 ' + Object.keys(rows[0].eventTotals).map(key => {
+  const decisionKeys = ['offsides', 'offsideChecks', 'offsideMarks', 'fouls', 'cards'];
+  console.log('  경기당 판정 ' + decisionKeys.map(key => {
     const avg = rows.reduce((s, r) => s + r.eventTotals[key] / r.n, 0) / rows.length;
     return `${key}=${avg.toFixed(2)}`;
   }).join(' '));
