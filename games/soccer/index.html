@@ -230,11 +230,11 @@ const C = {
 //
 // 0.84~0.94 상대 속도 배수 스윕을 각 200경기로 측정했을 때 과거 30경기의
 // 급변은 재현되지 않았다. 난이도 차이는 react(반응 지연), aimErr(조준
-// 오차), gk(골키퍼 반응)를 포함한 전체 조합으로 관리하고 단계마다 측정한다.
+// 오차), gk(골키퍼 위치·다이빙)를 포함한 전체 조합으로 관리하고 단계마다 측정한다.
 const LEVELS = [
-  { name:'쉬움',  react:0.90, aimErr:280, gk:0.55 },
-  { name:'보통',  react:0.28, aimErr:100, gk:0.85 },
-  { name:'어려움', react:0.15, aimErr:55,  gk:0.95 }
+  { name:'쉬움',  react:0.90, aimErr:280, gk:0.85 },
+  { name:'보통',  react:0.28, aimErr:100, gk:1.15 },
+  { name:'어려움', react:0.08, aimErr:10,  gk:1.55 }
 ];
 let level = 1;
 
@@ -405,11 +405,13 @@ const score = [0, 0];
 const matchStats = {
   shots:[0,0], onTarget:[0,0], possession:[0,0], corners:[0,0],
   shotGoals:[0,0], nonShotGoals:[0,0], blocks:[0,0],
+  carryGoals:[0,0], looseGoals:[0,0],
+  attackingLooseGoals:[0,0], ownGoals:[0,0],
   fouls:[0,0], cards:[0,0], offsides:[0,0], setpieces:{}, events:[]
 };
 const ball = {
   x:0, y:0, vx:0, vy:0, owner:null, lastTouch:null, freeCd:0,
-  shotSide:-1, shotCounted:false, prevX:0, prevY:0
+  shotSide:-1, shotCounted:false, blockCounted:false, prevX:0, prevY:0
 };
 const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
 const attackDir = [1, -1];
@@ -589,7 +591,7 @@ function buildTeams() {
       kickCd:0, trapCd:0, tackleCd:0, tackleT:0, blockT:0,
       actShoot:0, actPass:0, actThrough:0, shootHeld:false, shootCharge:0,
       aimX:attackDir[side], aimY:0, manualAim:false, yellow:0,
-      aiT:Math.random() * 0.3, aiTx:0, aiTy:0
+      aiT:Math.random() * 0.3, aiTx:0, aiTy:0, gkDifficulty:LEVELS[1].gk
     };
     });
   }
@@ -617,7 +619,7 @@ function resetPositions(kickSide) {
   ball.x = ball.prevX = FW / 2; ball.y = ball.prevY = FH / 2;
   ball.vx = ball.vy = 0;
   ball.owner = ball.lastTouch = null; ball.freeCd = 0;
-  ball.shotSide = -1; ball.shotCounted = false; offside = null;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false; offside = null;
   cam.x = FW / 2; cam.y = FH / 2;
   ctrl[0] = ctrl[1] = null;
   ctrlLock[0] = ctrlLock[1] = 0;
@@ -629,6 +631,8 @@ function startMatch(m) {
   matchStats.shots.fill(0); matchStats.onTarget.fill(0);
   matchStats.shotGoals.fill(0); matchStats.nonShotGoals.fill(0);
   matchStats.blocks.fill(0);
+  matchStats.carryGoals.fill(0); matchStats.looseGoals.fill(0);
+  matchStats.attackingLooseGoals.fill(0); matchStats.ownGoals.fill(0);
   matchStats.possession.fill(0); matchStats.corners.fill(0);
   matchStats.fouls.fill(0); matchStats.cards.fill(0); matchStats.setpieces = {};
   matchStats.offsides.fill(0);
@@ -1003,8 +1007,8 @@ const OFFSIDE_RUN_PERIOD = [0, 2, 4];
 const OFFSIDE_RUN_REWARD = [0, 260, 120];
 const AI_ACTION_RATE = 0.88;
 // AI 파라미터만으로 기준 승률을 회복하지 못해 남긴 단조 1P 보조.
-// 쉬움=보통, 어려움=0이며 한 값으로 슛·태클·GK 범위를 함께 조절한다.
-const HUMAN_ASSIST = [0.35, 0.35, 0];
+// 쉬움≥보통≥어려움이며 한 값으로 슛·태클·GK 범위를 함께 조절한다.
+const HUMAN_ASSIST = [1.00, 0.35, 0];
 
 function movePlayer(p, ax, ay, dt, maxSpeed = P_MAX) {
   const m = Math.hypot(ax, ay);
@@ -1043,8 +1047,9 @@ function staminaLimitedSpeed(p, requested, dt) {
     p.energy -= dt * .0004 * staminaLoad;
   }
   p.energy = Math.max(0, Math.min(1, p.energy));
-  const fatigue = target >= SPEED_JOG * .9 ? .70 + p.energy * .30
-    : .90 + p.energy * .10;
+  // 피로는 조깅 이상에서 페이스를 떨어뜨리고, 5km/h 걷기는 회복 가능한
+  // 기준 보행 속도로 유지한다.
+  const fatigue = target >= SPEED_JOG * .9 ? .70 + p.energy * .30 : 1;
   return target * fatigue;
 }
 
@@ -1133,9 +1138,8 @@ function updateBall(dt) {
     const crossedGoal = attackDir[p.side] === 1 ? ball.x >= FW : ball.x <= 0;
     if (crossedGoal && inGoalMouth(ball.y)) {
       matchStats.shots[p.side]++;
-      ball.shotSide = p.side; ball.shotCounted = false;
+      ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = false;
     }
-    if (outOfPlay(ball.x, ball.y)) return;
     return;
   }
   ball.x += ball.vx * dt; ball.y += ball.vy * dt;
@@ -1143,7 +1147,6 @@ function updateBall(dt) {
   ball.vx *= f; ball.vy *= f;
   if (Math.hypot(ball.vx, ball.vy) < 5) { ball.vx = 0; ball.vy = 0; }
 
-  outOfPlay(ball.x, ball.y);
 }
 
 function takePossession(p) {
@@ -1152,14 +1155,14 @@ function takePossession(p) {
   // 후보가 아닌 선수에게 패스가 정상 도달하면 이전 후보는 더는 유효하지 않다.
   if (offside) offside = null;
   ball.owner = p; ball.lastTouch = p;
-  ball.shotSide = -1; ball.shotCounted = false;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
   ball.vx = p.vx; ball.vy = p.vy;
   return true;
 }
 
 function releaseBall(p, vx, vy) {
   ball.owner = null; ball.lastTouch = p; ball.freeCd = 0.08;
-  ball.shotSide = -1; ball.shotCounted = false;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
   p.trapCd = REOWN_CD; p.kickCd = Math.max(p.kickCd, 0.22);
   const sp = Math.hypot(vx, vy);
   ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
@@ -1177,7 +1180,7 @@ function beginSetpiece(type, side, spot) {
     matchStats.events.push({ event:type, side, x:Math.round(spot.x), y:Math.round(spot.y) });
   if (type === 'corner') matchStats.corners[side]++;
   ball.owner = null; ball.vx = ball.vy = 0; ball.freeCd = 0.1;
-  ball.shotSide = -1; ball.shotCounted = false;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
   ball.x = Math.max(0, Math.min(FW, spot.x));
   ball.y = Math.max(0, Math.min(FH, spot.y));
   ball.prevX = ball.x; ball.prevY = ball.y;
@@ -1258,7 +1261,7 @@ function takeSetpiece(kind = 'pass') {
   ball.vx = Math.cos(ang) * v; ball.vy = Math.sin(ang) * v;
   const goalBound = goalBoundKick(p.side, ball.x, ball.y, ball.vx, ball.vy);
   ball.shotSide = isShot || goalBound ? p.side : -1;
-  ball.shotCounted = false;
+  ball.shotCounted = ball.blockCounted = false;
   if (isShot || goalBound) matchStats.shots[p.side]++;
   if (matchStats.events.length < 20)
     matchStats.events.push({ event:'kick', type:s.type, vx:Math.round(ball.vx), vy:Math.round(ball.vy) });
@@ -1280,10 +1283,10 @@ function stepSetpiece(dt) {
   if (setpiece.auto <= 0) takeSetpiece('pass');
 }
 
-// 목표 골문 방향으로 조준할 지점 (약간 골문 안쪽을 노린다)
+// 공용 슛 분산. 난이도별 시도율을 만들지 않고 200경기 성공률로 보정한다.
 function aimAt(side) {
   return { x:attackDir[side] === 1 ? FW : 0,
-    y:FH / 2 + (Math.random() * 2 - 1) * GOAL_H * 0.82 };
+    y:FH / 2 + (Math.random() * 2 - 1) * GOAL_H * 6.00 };
 }
 
 function goalBoundKick(side, x, y, vx, vy) {
@@ -1399,9 +1402,13 @@ function collide(p) {
   const dx = contact.x - p.x, dy = contact.y - p.y;
   const gkAssist = p.isGK && p.side === 0 && mode === '1p'
     ? 1 + HUMAN_ASSIST[level] : 1;
+  // 보통을 1로 정규화해 기존 물리 도달 거리를 보존하고, 난이도의 gk 축은
+  // 실제 다이빙 도달 범위를 단조롭게 바꾼다.
+  const gkDifficulty = p.isGK ? p.gkDifficulty / LEVELS[1].gk : 1;
   const blockReach = !p.isGK && p.blockT > 0 && ball.shotSide === 1 - p.side
     ? SHOT_BLOCK_REACH * p.defenseMul : 0;
-  const d = Math.hypot(dx, dy), min = p.reach * gkAssist + R_BALL + blockReach;
+  const d = Math.hypot(dx, dy),
+    min = p.reach * gkAssist * gkDifficulty + R_BALL + blockReach;
   if (d >= min || d === 0) return;
   if (!ball.owner && callOffside(p)) return;
   const nx = dx / d, ny = dy / d;
@@ -1425,6 +1432,7 @@ function collide(p) {
   }
 
   ball.x = p.x + nx * min; ball.y = p.y + ny * min;
+  ball.lastTouch = p;
 
   // 골키퍼는 잡아서 앞으로 크게 걷어낸다. 다른 선수처럼 튕겨내면
   // 골문 앞에서 공이 계속 맴돌아 결국 실점한다.
@@ -1432,7 +1440,7 @@ function collide(p) {
     if (ball.shotSide === 1 - p.side && !ball.shotCounted) {
       matchStats.onTarget[ball.shotSide]++; ball.shotCounted = true;
     }
-    ball.shotSide = -1; ball.shotCounted = false;
+    ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
     p.kickCd = 0.35;
     const dir = attackDir[p.side];
     const ang = Math.atan2((FH / 2 - p.y) * 0.6 + (Math.random() * 2 - 1) * 300, dir * 900);
@@ -1443,14 +1451,14 @@ function collide(p) {
 
   let vx, vy, deliberateKick = false;
   if (ball.shotSide === 1 - p.side) {
-    matchStats.blocks[p.side]++;
-    ball.shotSide = -1; ball.shotCounted = false;
+    if (!ball.blockCounted) matchStats.blocks[p.side]++;
+    ball.blockCounted = true;
   }
   if (p.actShoot > 0 && p.kickCd <= 0) {
     deliberateKick = true;
     p.actShoot = 0; p.kickCd = 0.3;
     matchStats.shots[p.side]++;
-    ball.shotSide = p.side; ball.shotCounted = false;
+    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = false;
     const a = aimAt(p.side);
       const ang = Math.atan2(a.y - p.y, a.x - p.x);
       vx = Math.cos(ang) * SHOOT_V * p.shotMul; vy = Math.sin(ang) * SHOOT_V * p.shotMul;
@@ -1491,7 +1499,7 @@ function collide(p) {
   if (deliberateKick && ball.shotSide < 0 &&
       goalBoundKick(p.side, ball.x, ball.y, vx, vy)) {
     matchStats.shots[p.side]++;
-    ball.shotSide = p.side; ball.shotCounted = false;
+    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = false;
   }
   const sp = Math.hypot(vx, vy);
   ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
@@ -1557,11 +1565,19 @@ function separateAll() {
 }
 
 function goal(side) {
-  if (ball.shotSide === side) {
+  const attackingLastTouch = !ball.owner && ball.lastTouch &&
+    ball.lastTouch.side === side;
+  if (ball.shotSide === side || attackingLastTouch) {
+    if (ball.shotSide !== side) matchStats.shots[side]++;
     matchStats.shotGoals[side]++;
     if (!ball.shotCounted) matchStats.onTarget[side]++;
   } else {
     matchStats.nonShotGoals[side]++;
+    matchStats[ball.owner ? 'carryGoals' : 'looseGoals'][side]++;
+    if (!ball.owner) {
+      const ownGoal = ball.lastTouch && ball.lastTouch.side !== side;
+      matchStats[ownGoal ? 'ownGoals' : 'attackingLooseGoals'][side]++;
+    }
   }
   score[side]++; lastScorer = side;
   ball.owner = null; setpiece = null;
@@ -1722,6 +1738,7 @@ function gkTarget(p) {
 }
 
 function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
+  if (p.isGK) p.gkDifficulty = L.gk;
   p.aiT -= dt;
   if (p.aiT <= 0) {
     p.aiT = L.react * (p.isGK ? 0.5 : 1);
@@ -1729,7 +1746,9 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
     if (p.isGK) {
       t = gkTarget(p);
       // 골키퍼 반응은 별도 계수 — 난이도가 낮으면 늦게 붙는다
-      t.y = FH / 2 + (t.y - FH / 2) * L.gk;
+      t.y = FH / 2 + (t.y - FH / 2) * Math.min(1, L.gk);
+      t.y = Math.max((FH - GOAL_H) / 2 - 30,
+        Math.min((FH + GOAL_H) / 2 + 30, t.y));
     } else if (ball.owner === p) {
       const dir = attackDir[p.side];
       t = { x:p.x + dir * 320, y:p.y + (FH / 2 - p.y) * 0.16 };
@@ -1770,7 +1789,7 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
     const attacking = ball.owner && ball.owner.side === p.side;
     const forwardRun = attacking && p.role === 'FW' && d > 160 && p.energy > .08;
     targetSpeed = forwardRun ? SPEED_SPRINT
-      : d > 430 ? SPEED_RUN : d > 200 ? SPEED_JOG : SPEED_WALK;
+      : d > 430 ? SPEED_RUN : d > 140 ? SPEED_JOG : SPEED_WALK;
   }
 
   // 공이 발 앞에 있으면 슛이나 패스
@@ -1785,7 +1804,7 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
       teamTactics(1 - p.side).line > .65;
     if (p.isGK) {
       // 처리는 collide() 안에서 직접 한다 (잡아서 걷어내기)
-    } else if (toGoal < FW * 0.54 && Math.random() < AI_ACTION_RATE) {
+    } else if (toGoal < FW * 0.39 && Math.random() < AI_ACTION_RATE) {
       p.actShoot = 0.65;                                      // 골문 근처면 슛
     } else if (exploitHighLine && Math.random() < AI_ACTION_RATE * .8) {
       p.actThrough = 0.15;                                    // 높은 선 뒤 측면 침투
@@ -1967,8 +1986,9 @@ function step(dt) {
     else if (p.actPass > 0) kickOwned(p, 'pass');
   }
   updateBall(dt);
-  if (state !== 'play') return;                        // 득점으로 중단
+  if (state !== 'play') return;                        // 소유한 채 득점한 경우 중단
   for (const side of [0, 1]) for (const p of teams[side]) collide(p);
+  if (outOfPlay(ball.x, ball.y)) return;
   updateCamera(dt);
   syncClock();
   syncTouchActions();

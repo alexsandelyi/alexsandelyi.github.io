@@ -41,7 +41,7 @@ function parseArgs(argv) {
   const o = {
     n:null, seed:1, levels:[0, 1, 2], botLevel:1, sweepSpeed:false,
     gkReach:null, opponentSpeed:null, selfTest:false, homeTeam:0, awayTeam:0,
-    homeTactic:'default', awayTactic:'default'
+    homeTactic:'default', awayTactic:'default', matchSec:null
   };
   let levelSet = false;
   for (let i = 0; i < argv.length; i++) {
@@ -61,6 +61,7 @@ function parseArgs(argv) {
     else if (a === '--away-team') o.awayTeam = +next();
     else if (a === '--home-tactic') o.homeTactic = next();
     else if (a === '--away-tactic') o.awayTactic = next();
+    else if (a === '--match-sec') o.matchSec = +next();
     else if (a === '--sweep-speed') o.sweepSpeed = true;
     else if (a === '--self-test') o.selfTest = true;
     else if (a === '-h' || a === '--help') o.help = true;
@@ -89,6 +90,9 @@ function parseArgs(argv) {
   if (![o.homeTactic, o.awayTactic].every(n => Object.hasOwn(TACTIC_PRESETS, n))) {
     throw new Error('--home-tactic/--away-tactic 은 default|high|press|wide 여야 합니다');
   }
+  if (o.matchSec !== null && ![360, 600, 1200].includes(o.matchSec)) {
+    throw new Error('--match-sec 는 360|600|1200 이어야 합니다');
+  }
   return o;
 }
 
@@ -102,6 +106,7 @@ const HELP = `동네 축구 밸런스 측정
       --opponent-speed <수>  1P 상대 이동 속도 배수 덮어쓰기
       --home-team <0~7> / --away-team <0~7>  측정 팀 선택
       --home-tactic/--away-tactic <default|high|press|wide>
+      --match-sec <360|600|1200>  6·10·20분 경기 길이 검증
       --sweep-speed    보통 1P 상대 속도 배수 0.84~0.94를 0.01 간격으로 측정
                        기본 경기 수는 속도값당 200 (-n으로 변경 가능)
       --self-test      오프사이드·파울 결정론 시나리오 검사
@@ -241,6 +246,7 @@ const HARNESS = `
       tacticOverride[0] = tacticOverride[1] = null;
     },
     setTactics: function (side, tactics) { tacticOverride[side] = tactics; },
+    setMatchSec: function (n) { MATCH_SEC = n; this.matchSec = n; },
     run: function (lvl) {
       level = lvl;
       startMatch('1p');
@@ -278,6 +284,10 @@ const HARNESS = `
           shots: matchStats.shots.slice(),
           shotGoals: matchStats.shotGoals.slice(),
           nonShotGoals: matchStats.nonShotGoals.slice(),
+          carryGoals: matchStats.carryGoals.slice(),
+          looseGoals: matchStats.looseGoals.slice(),
+          attackingLooseGoals: matchStats.attackingLooseGoals.slice(),
+          ownGoals: matchStats.ownGoals.slice(),
           blocks: matchStats.blocks.slice(),
           offsides: matchStats.offsides.slice(),
           offsideChecks: [offsideChecks],
@@ -373,6 +383,10 @@ const HARNESS = `
       goal(0);
       var goalClassification = score.every(function (goals, side) {
         return goals === matchStats.shotGoals[side] + matchStats.nonShotGoals[side];
+      }) && matchStats.nonShotGoals.every(function (goals, side) {
+        return goals === matchStats.carryGoals[side] + matchStats.looseGoals[side];
+      }) && matchStats.looseGoals.every(function (goals, side) {
+        return goals === matchStats.attackingLooseGoals[side] + matchStats.ownGoals[side];
       }) && matchStats.shotGoals[1] === 1 && matchStats.nonShotGoals[0] === 1;
       startMatch('1p');
       var formationsValid = Object.keys(FORMATIONS).every(function (name) {
@@ -568,13 +582,15 @@ function runBatch(job) {
     sim.setOpponentSpeed(job.opponentSpeed);
   }
   sim.setTeams(job.homeTeam || 0, job.awayTeam || 0);
+  if (job.matchSec !== null && job.matchSec !== undefined) sim.setMatchSec(job.matchSec);
   if (job.homeTactic !== 'default') sim.setTactics(0, TACTIC_PRESETS[job.homeTactic]);
   if (job.awayTactic !== 'default') sim.setTactics(1, TACTIC_PRESETS[job.awayTactic]);
 
   let w = 0, d = 0, l = 0, gf = 0, ga = 0, steps = 0;
   const setpieces = {};
   const eventTotals = {
-    shots:0, shotGoals:0, nonShotGoals:0, blocks:0,
+    shots:0, shotGoals:0, nonShotGoals:0, carryGoals:0, looseGoals:0,
+    attackingLooseGoals:0, ownGoals:0, blocks:0,
     offsides:0, offsideChecks:0, offsideMarks:0, fouls:0, cards:0
   };
   const movement = { count:0, sum:0, max:0, bins:[0,0,0,0], halfCount:[0,0], halfSum:[0,0] };
@@ -732,13 +748,15 @@ function printNormalResults(rows) {
   );
 
   console.log('\n슛 분류 (양 팀 합계)');
-  console.log('난이도  슛/경기  슛득점 비슛득점  성공률  비슛비율  블록/경기');
+  console.log('난이도  슛/경기  슛득점 비슛(운반/공격루즈/자책)  성공률  비슛비율  블록');
   for (const r of rows) {
     const s = r.eventTotals;
     const goals = s.shotGoals + s.nonShotGoals;
     console.log(
       `${LEVEL_NAMES[r.lvl].padEnd(4)}  ${(s.shots / r.n).toFixed(2).padStart(7)} ` +
-      `${String(s.shotGoals).padStart(6)} ${String(s.nonShotGoals).padStart(8)}  ` +
+      `${String(s.shotGoals).padStart(6)} ${String(s.nonShotGoals).padStart(4)}` +
+      `(${String(s.carryGoals).padStart(2)}/${String(s.attackingLooseGoals).padStart(3)}` +
+      `/${String(s.ownGoals).padStart(3)})  ` +
       `${pct(s.shotGoals / Math.max(1, s.shots))}% ` +
       `${pct(s.nonShotGoals / Math.max(1, goals))}%  ` +
       `${(s.blocks / r.n).toFixed(2).padStart(7)}`
@@ -833,7 +851,7 @@ async function main() {
       lvl:1, speed, n:opt.n, seed:opt.seed, botLevel:opt.botLevel,
       gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed,
       homeTeam:opt.homeTeam, awayTeam:opt.awayTeam
-      ,homeTactic:opt.homeTactic, awayTactic:opt.awayTactic
+      ,homeTactic:opt.homeTactic, awayTactic:opt.awayTactic, matchSec:opt.matchSec
     }));
     const rows = await runJobs(jobs, (row, done, total) => {
       console.log(
@@ -853,12 +871,13 @@ async function main() {
   if (opt.opponentSpeed !== null) console.log(`  상대 이동 배수 ${opt.opponentSpeed}`);
   console.log(`  팀       ${opt.homeTeam} vs ${opt.awayTeam}`);
   console.log(`  전술     ${opt.homeTactic} vs ${opt.awayTactic}`);
+  if (opt.matchSec !== null) console.log(`  경기 길이 재정의 ${opt.matchSec}초`);
   const chunks = measurementChunks(opt.n);
   const jobs = opt.levels.flatMap(lvl => chunks.map((n, chunk) => ({
     lvl, n, chunk, seed:chunkSeed(opt.seed, chunk), botLevel:opt.botLevel,
     gkReach:opt.gkReach, opponentSpeed:opt.opponentSpeed,
     homeTeam:opt.homeTeam, awayTeam:opt.awayTeam,
-    homeTactic:opt.homeTactic, awayTactic:opt.awayTactic
+    homeTactic:opt.homeTactic, awayTactic:opt.awayTactic, matchSec:opt.matchSec
   })));
   console.log(`  병렬 작업 ${workerLimit(jobs.length)}개 · 난이도당 ${chunks.length}청크`);
   const parts = await runJobs(jobs, (row, done, total) => {

@@ -13,6 +13,7 @@
 | [balance.md](balance.md) | 실측 승률과 측정 조건. 도구는 `tools/soccer-sim.js` |
 | [balance-history.md](balance-history.md) | 0~3단계 과거 기준선과 목표 변경 근거 |
 | [balance-expansion.md](balance-expansion.md) | 4단계 이후 회귀·팀·전술 실측 |
+| [realistic-balance.md](realistic-balance.md) | 현실 계측치 전환 1~5단계 실측과 튜닝 기록 |
 | [input-system.md](input-system.md) | 조작과 플레이 감. 공 소유, 조준, 액션, 선수 전환 |
 | [match-rules.md](match-rules.md) | 경기 규칙과 심판. 아웃, 세트피스, 오프사이드, 파울 |
 | [team-tactics.md](team-tactics.md) | 팀·전술·선수 상성. 능력치, 포메이션, 전술 슬라이더 |
@@ -40,8 +41,8 @@ team-tactics  ──→ game-modes      (팀이 달라야 토너먼트·리그�
 
 ## 현재 상태
 
-0~6단계 구현 완료. 토너먼트·승부차기·리그·다중 시즌·v2 저장·경기 기록이
-동작하며 확장 밸런스는 `balance-expansion.md`에 기록돼 있다.
+0~6단계와 현실 계측치 전환 1~5단계 구현 완료. 토너먼트·승부차기·리그·
+다중 시즌·v2 저장·경기 기록이 동작한다.
 
 후속 규칙 확장은 새 측정 없이 확정하지 않는다. 현재 구현과 보류 항목은
 각 설계 문서에서 `확정` / `제안` / `미결`로 구분한다.
