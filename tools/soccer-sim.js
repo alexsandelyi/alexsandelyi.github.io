@@ -76,8 +76,8 @@ function parseArgs(argv) {
     throw new Error('--bot 은 0~2 정수여야 합니다');
   }
   if (o.sweepSpeed && levelSet) throw new Error('--sweep-speed 와 -l 은 함께 쓸 수 없습니다');
-  if (o.gkReach !== null && (!Number.isFinite(o.gkReach) || o.gkReach < 1 || o.gkReach > 2.5)) {
-    throw new Error('--gk-reach 는 1~2.5 숫자여야 합니다');
+  if (o.gkReach !== null && (!Number.isFinite(o.gkReach) || o.gkReach < 1 || o.gkReach > 8)) {
+    throw new Error('--gk-reach 는 1~8 숫자여야 합니다');
   }
   if (o.opponentSpeed !== null &&
       (!Number.isFinite(o.opponentSpeed) || o.opponentSpeed < 0.5 || o.opponentSpeed > 1.2)) {
@@ -245,11 +245,27 @@ const HARNESS = `
       level = lvl;
       startMatch('1p');
       offsideChecks = offsideMarks = 0;
+      var movement = {
+        count:0, sum:0, max:0, bins:[0,0,0,0],
+        halfCount:[0,0], halfSum:[0,0]
+      };
       var dt = 1/60, steps = 0;
       var MAX = 60 * 60 * 30;            // 안전장치: 30분 분량
       while (state !== 'end' && steps < MAX) {
         botDt = dt;
         step(dt);
+        if (state === 'play') {
+          var allPlayers = teams[0].concat(teams[1]);
+          for (var pi = 0; pi < allPlayers.length; pi++) {
+            var player = allPlayers[pi];
+            var kmh = Math.hypot(player.vx, player.vy) / M * 3.6;
+            movement.count++; movement.sum += kmh;
+            movement.max = Math.max(movement.max, kmh);
+            movement.halfCount[half - 1]++;
+            movement.halfSum[half - 1] += kmh;
+            movement.bins[kmh < 8 ? 0 : kmh < 15.5 ? 1 : kmh < 27 ? 2 : 3]++;
+          }
+        }
         steps++;
       }
       if (steps >= MAX) throw new Error('경기가 끝나지 않았습니다 (무한 루프)');
@@ -257,6 +273,7 @@ const HARNESS = `
         gf: score[0], ga: score[1], steps: steps,
         setpieces: Object.assign({}, matchStats.setpieces),
         events: matchStats.events.slice(),
+        movement: movement,
         stats: {
           offsides: matchStats.offsides.slice(),
           offsideChecks: [offsideChecks],
@@ -391,8 +408,23 @@ const HARNESS = `
       var runner = teams[0][1];
       runner.x = FW / 2; runner.y = FH / 2; runner.vx = P_MAX; runner.vy = 0;
       var runnerStart = runner.x;
-      for (var mv = 0; mv < 60; mv++) movePlayer(runner, 1, 0, 1/60, 1);
+      for (var mv = 0; mv < 60; mv++) movePlayer(runner, 1, 0, 1/60, P_MAX);
       var straightSpeed = Math.abs((runner.x - runnerStart) - P_MAX) < 0.01;
+      runner.energy = 1;
+      var sprintStartEnergy = runner.energy;
+      var requestedSprint = 0;
+      for (var staminaTick = 0; staminaTick < 60; staminaTick++) {
+        requestedSprint = staminaLimitedSpeed(runner, SPEED_SPRINT, 1/60);
+      }
+      runner.energy = 0;
+      var exhaustedSprint = staminaLimitedSpeed(runner, SPEED_SPRINT, 1/60);
+      var movementPaces = Math.abs(SPEED_WALK / M * 3.6 - 5) < 1e-9 &&
+        Math.abs(SPEED_JOG / M * 3.6 - 11) < 1e-9 &&
+        Math.abs(SPEED_RUN / M * 3.6 - 20) < 1e-9 &&
+        Math.abs(SPEED_SPRINT / M * 3.6 - 34.2) < 1e-9 &&
+        runner.energy < sprintStartEnergy && requestedSprint <= SPEED_SPRINT &&
+        exhaustedSprint <= SPEED_RUN &&
+        abilityAdjustedSpeed(runner, SPEED_SPRINT, SPEED_SPRINT) <= P_MAX;
       var colliderA = teams[0][9], colliderB = teams[1][9];
       colliderA.x = 900; colliderA.y = 500; colliderA.vx = colliderA.vy = 0;
       colliderB.x = 900 + R_PLAYER * 2 - 1; colliderB.y = 500;
@@ -417,7 +449,9 @@ const HARNESS = `
       var physicalScale = R_PLAYER === 6 && R_BALL === 2.2 && P_ACCEL === 150 &&
         P_MAX === 190 && P_FRICTION === 4 && B_FRICTION === .82 && B_MAX === 800 &&
         TOUCH_V === 120 && PASS_V === 340 && SHOOT_V === 660 && GOAL_H === 146 &&
-        GK_REACH_MUL === 6;
+        GK_REACH_MUL === 6 && teams[0].concat(teams[1]).every(function (p) {
+          return p.speedMul <= 1;
+        });
       var rounds = makeLeagueRounds(8), pairCounts = {};
       rounds.forEach(function (fixtures) {
         fixtures.forEach(function (pair) {
@@ -472,6 +506,7 @@ const HARNESS = `
         stateAtNewMatch:stateAtNewMatch,
         penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
         physicalScale:physicalScale, straightSpeed:straightSpeed,
+        movementPaces:movementPaces,
         collisionRadius:collisionRadius, separatedDrawScale:separatedDrawScale,
         cameraViewportStable:cameraViewportStable,
         matchLengthMigration:matchLengthMigration,
@@ -528,6 +563,7 @@ function runBatch(job) {
   let w = 0, d = 0, l = 0, gf = 0, ga = 0, steps = 0;
   const setpieces = {};
   const eventTotals = { offsides:0, offsideChecks:0, offsideMarks:0, fouls:0, cards:0 };
+  const movement = { count:0, sum:0, max:0, bins:[0,0,0,0], halfCount:[0,0], halfSum:[0,0] };
   let sampleEvents = [];
   const t0 = Date.now();
   for (let i = 0; i < job.n; i++) {
@@ -537,6 +573,15 @@ function runBatch(job) {
       setpieces[type] = (setpieces[type] || 0) + count;
     }
     if (!sampleEvents.length) sampleEvents = r.events || [];
+    if (r.movement) {
+      movement.count += r.movement.count; movement.sum += r.movement.sum;
+      movement.max = Math.max(movement.max, r.movement.max);
+      for (let b = 0; b < 4; b++) movement.bins[b] += r.movement.bins[b];
+      for (let h = 0; h < 2; h++) {
+        movement.halfCount[h] += r.movement.halfCount[h];
+        movement.halfSum[h] += r.movement.halfSum[h];
+      }
+    }
     for (const key of Object.keys(eventTotals)) {
       eventTotals[key] += (r.stats && r.stats[key] || []).reduce((s, n) => s + n, 0);
     }
@@ -545,6 +590,7 @@ function runBatch(job) {
   return {
     lvl:job.lvl, speed:job.speed, w, d, l, gf, ga, n:job.n,
     matchSec:sim.matchSec, avgSteps:steps / job.n, setpieces, sampleEvents, eventTotals,
+    movement,
     secs:(Date.now() - t0) / 1000
   };
 }
@@ -622,6 +668,22 @@ function printNormalResults(rows) {
     `전체 경기당 총 득점 ${allGoals.toFixed(2)} ` +
     `(목표 ${TARGET_GOALS[0]}~${TARGET_GOALS[1]})`
   );
+
+  console.log('\n이동 속도 (play 상태·22명 시간 가중)');
+  console.log('난이도  평균   최고   걷기   조깅   달리기 스프린트  전반   후반');
+  for (const r of rows) {
+    const m = r.movement, count = Math.max(1, m.count);
+    const avg = m.sum / count;
+    const shares = m.bins.map(n => n / count * 100);
+    const first = m.halfSum[0] / Math.max(1, m.halfCount[0]);
+    const second = m.halfSum[1] / Math.max(1, m.halfCount[1]);
+    console.log(
+      `${LEVEL_NAMES[r.lvl].padEnd(4)}  ${avg.toFixed(2).padStart(5)} ` +
+      `${m.max.toFixed(2).padStart(6)} ` +
+      `${shares.map(v => v.toFixed(1).padStart(6)).join(' ')}  ` +
+      `${first.toFixed(2).padStart(5)} ${second.toFixed(2).padStart(6)}`
+    );
+  }
 
   const width = rows.reduce((m, r) => {
     const [lo, hi] = wilson(r.w, r.n);

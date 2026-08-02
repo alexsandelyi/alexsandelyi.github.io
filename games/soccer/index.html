@@ -574,7 +574,8 @@ function buildTeams() {
       side, role:f.role, no:i, isGK:f.role === 'GK',
       hx:f.x, hy:f.y,                       // 정규화 홈 위치
       stats,
-      speedMul:.84 + stats.speed / 99 * .22,
+      // P_MAX가 전체 선수의 실제 상한이다. 능력치는 그 아래에서만 차이를 낸다.
+      speedMul:.78 + stats.speed / 99 * .22,
       shotMul:.84 + stats.shot / 99 * .28,
       passMul:.84 + stats.pass / 99 * .26,
       defenseMul:.76 + stats.defense / 99 * .46,
@@ -986,7 +987,9 @@ const P_ACCEL = 150, P_MAX = 190, P_FRICTION = 4;
 const B_FRICTION = 0.82, B_MAX = 800;
 const TOUCH_V = 120, PASS_V = 340, SHOOT_V = 660;
 const TRAP_R = R_PLAYER + R_BALL + 7, TRAP_V = 620;
-const OWNER_SPEED = 0.88, SPRINT_SPEED = 1.25, REOWN_CD = 0.35;
+const OWNER_SPEED = 0.88, REOWN_CD = 0.35;
+const SPEED_WALK = 5 / 3.6 * M, SPEED_JOG = 11 / 3.6 * M;
+const SPEED_RUN = 20 / 3.6 * M, SPEED_SPRINT = P_MAX;
 const OPPONENT_SPEED_MUL = [1, 1, 1];
 // 평소에는 라인 초과분을 되돌리되, 공을 소유한 동안 FW가 짧은 침투
 // 구간을 갖는다. 어려울수록 구간이 짧고 드물어 라인을 더 잘 지킨다.
@@ -998,13 +1001,13 @@ const AI_ACTION_RATE = 0.88;
 // 쉬움=보통, 어려움=0이며 한 값으로 슛·태클·GK 범위를 함께 조절한다.
 const HUMAN_ASSIST = [0.35, 0.35, 0];
 
-function movePlayer(p, ax, ay, dt, speedMul = 1) {
+function movePlayer(p, ax, ay, dt, maxSpeed = P_MAX) {
   const m = Math.hypot(ax, ay);
-  if (m > 1) { ax /= m; ay /= m; }
+  if (m > 0.001) { ax /= m; ay /= m; }
   p.vx += ax * P_ACCEL * dt;
   p.vy += ay * P_ACCEL * dt;
   if (m < 0.01) { const f = Math.exp(-P_FRICTION * dt); p.vx *= f; p.vy *= f; }
-  const cap = P_MAX * speedMul;
+  const cap = Math.max(0, maxSpeed);
   const sp = Math.hypot(p.vx, p.vy);
   if (sp > cap) { p.vx = p.vx / sp * cap; p.vy = p.vy / sp * cap; }
   p.x += p.vx * dt; p.y += p.vy * dt;
@@ -1018,6 +1021,30 @@ function movePlayer(p, ax, ay, dt, speedMul = 1) {
   if (p.actPass > 0) p.actPass -= dt;
   if (p.actThrough > 0) p.actThrough -= dt;
   if (p.shootHeld) p.shootCharge = Math.min(1, p.shootCharge + dt / 1.05);
+}
+
+function staminaLimitedSpeed(p, requested, dt) {
+  let target = Math.max(0, Math.min(SPEED_SPRINT, requested));
+  const staminaLoad = 1.25 - p.stats.stamina / 220;
+  if (target >= SPEED_SPRINT * .9) {
+    if (p.energy <= .08) target = SPEED_RUN;
+    else p.energy -= dt * .015 * staminaLoad;
+  } else if (target >= SPEED_RUN * .9) {
+    p.energy -= dt * .003 * staminaLoad;
+  } else if (target >= SPEED_JOG * .9) {
+    p.energy -= dt * .0012 * staminaLoad;
+  } else if (target <= SPEED_WALK * 1.05) {
+    p.energy -= dt * .0004 * staminaLoad;
+  }
+  p.energy = Math.max(0, Math.min(1, p.energy));
+  const fatigue = target >= SPEED_JOG * .9 ? .70 + p.energy * .30
+    : .90 + p.energy * .10;
+  return target * fatigue;
+}
+
+function abilityAdjustedSpeed(p, requested, limited) {
+  // 걷기·조깅은 전 선수의 공통 행동 속도, 달리기 이상만 속도 능력치 차이다.
+  return limited * (requested <= SPEED_JOG * 1.05 ? 1 : p.speedMul);
 }
 
 const inGoalMouth = (y) => y > (FH - GOAL_H) / 2 && y < (FH + GOAL_H) / 2;
@@ -1577,7 +1604,29 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
 
   let ax = p.aiTx - p.x, ay = p.aiTy - p.y;
   const d = Math.hypot(ax, ay);
-  if (d > 6) { ax /= d; ay /= d; } else { ax = ay = 0; }
+  if (d > 6) {
+    ax /= d; ay /= d;
+  } else {
+    // 위치를 지키는 동안에도 완전히 정지하지 않고 짧게 걸으며 시야를 잡는다.
+    const patrol = clock * .7 + p.no * 1.7 + p.side * Math.PI;
+    ax = Math.cos(patrol); ay = Math.sin(patrol);
+  }
+
+  let targetSpeed = SPEED_WALK;
+  if (p.isGK) {
+    targetSpeed = d > 120 ? SPEED_JOG : SPEED_WALK;
+  } else if (ball.owner === p) {
+    targetSpeed = SPEED_RUN;
+  } else if (isChaser) {
+    const chaseDistance = Math.hypot(ball.x - p.x, ball.y - p.y);
+    targetSpeed = chaseDistance > 240 && p.energy > .08 ? SPEED_SPRINT
+      : chaseDistance > 80 ? SPEED_RUN : SPEED_JOG;
+  } else {
+    const attacking = ball.owner && ball.owner.side === p.side;
+    const forwardRun = attacking && p.role === 'FW' && d > 160 && p.energy > .08;
+    targetSpeed = forwardRun ? SPEED_SPRINT
+      : d > 430 ? SPEED_RUN : d > 190 ? SPEED_JOG : SPEED_WALK;
+  }
 
   // 공이 발 앞에 있으면 슛이나 패스
   const bd = Math.hypot(ball.x - p.x, ball.y - p.y);
@@ -1599,30 +1648,36 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
       p.actPass = 0.15;                                       // 아니면 전진 패스
     }
   }
-  return { ax, ay };
+  return { ax, ay, targetSpeed };
 }
 
 // ── 사람 입력 ──────────────────────────────────────────────────────
 function readHuman(i) {
   let sx = 0, sy = 0;
+  let keyboard = false;
   if (i === 0) {
-    if (keys.KeyA || keys.ArrowLeft) sx -= 1;
-    if (keys.KeyD || keys.ArrowRight) sx += 1;
-    if (keys.KeyW || keys.ArrowUp) sy -= 1;
-    if (keys.KeyS || keys.ArrowDown) sy += 1;
+    if (keys.KeyA || keys.ArrowLeft) { sx -= 1; keyboard = true; }
+    if (keys.KeyD || keys.ArrowRight) { sx += 1; keyboard = true; }
+    if (keys.KeyW || keys.ArrowUp) { sy -= 1; keyboard = true; }
+    if (keys.KeyS || keys.ArrowDown) { sy += 1; keyboard = true; }
     if (stick.active) { sx += stick.dx; sy += stick.dy; }
   } else {
-    if (keys.KeyJ) sx -= 1;
-    if (keys.KeyL) sx += 1;
-    if (keys.KeyI) sy -= 1;
-    if (keys.KeyK) sy += 1;
+    if (keys.KeyJ) { sx -= 1; keyboard = true; }
+    if (keys.KeyL) { sx += 1; keyboard = true; }
+    if (keys.KeyI) { sy -= 1; keyboard = true; }
+    if (keys.KeyK) { sy += 1; keyboard = true; }
   }
   // 화면 위로 밀면 상대 골문(필드 +x) 쪽. 회전 시 입력도 같이 돌려야 한다.
   const sprint = i === 0
-    ? !!(keys.KeyE || (stick.active && Math.hypot(stick.dx, stick.dy) > 0.92))
+    ? !!keys.KeyE
     : !!keys.KeyU;
+  const walking = i === 0 ? !!keys.KeyR : !!keys.KeyP;
+  const inputMag = Math.min(1, Math.hypot(sx, sy));
   const base = view.rot ? { ax:-sy, ay:sx } : { ax:sx, ay:sy };
   const v = { ax:base.ax * attackDir[i], ay:base.ay * attackDir[i] };
+  v.targetSpeed = inputMag <= .01 ? 0
+    : keyboard ? (walking ? SPEED_WALK : sprint ? SPEED_SPRINT : SPEED_RUN)
+      : SPEED_SPRINT * inputMag;
   v.sprint = sprint; v.human = true; return v;
 }
 
@@ -1738,20 +1793,22 @@ function step(dt) {
         p.manualAim = !!inp.human && im > 0.15;
         if (p.manualAim) { p.aimX = inp.ax / im; p.aimY = inp.ay / im; }
         const ownerMul = ball.owner === p ? OWNER_SPEED : 1;
-        const sprinting = inp.sprint && p.energy > .05;
-        p.energy = Math.max(0, Math.min(1,
-          p.energy + dt * (sprinting ? -.12 * (1.2 - p.stats.stamina / 150) : .045)));
+        const targetSpeed = staminaLimitedSpeed(p, inp.targetSpeed || 0, dt);
         movePlayer(p, inp.ax, inp.ay, dt,
-          p.speedMul * ownerMul * (sprinting ? SPRINT_SPEED : 1));
+          abilityAdjustedSpeed(p, inp.targetSpeed || 0, targetSpeed) * ownerMul);
       } else if (human) {
         // 사람 팀의 나머지 선수는 아군 AI (난이도와 무관하게 보통 수준)
         const a = aiPlayer(p, dt, LEVELS[1],
           chaser[side].has(p) && p !== ctrl[side], offsideLine[side]);
-        movePlayer(p, a.ax, a.ay, dt, p.speedMul);
+        const targetSpeed = staminaLimitedSpeed(p, a.targetSpeed, dt);
+        movePlayer(p, a.ax, a.ay, dt,
+          abilityAdjustedSpeed(p, a.targetSpeed, targetSpeed));
       } else {
         const a = aiPlayer(p, dt, L, chaser[side].has(p), offsideLine[side]);
+        const targetSpeed = staminaLimitedSpeed(p, a.targetSpeed, dt);
         movePlayer(p, a.ax, a.ay, dt,
-          p.speedMul * (mode === '1p' ? OPPONENT_SPEED_MUL[level] : 1));
+          abilityAdjustedSpeed(p, a.targetSpeed, targetSpeed) *
+          (mode === '1p' ? OPPONENT_SPEED_MUL[level] : 1));
       }
     }
   }
@@ -2177,8 +2234,8 @@ function initTeamUi() {
 
 // ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
-  ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 스루패스, 스틱을 끝까지 밀면 스프린트입니다.'
-  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">E</span> 스프린트 · <span class="keys">Space</span> 슛/태클 · <span class="keys">Shift</span> 패스 · <span class="keys">Ctrl</span> 스루패스 · <span class="keys">Q</span> 선수전환<br>2P: IJKL · U · Enter · 오른쪽 Shift/Ctrl · O';
+  ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 스루패스, 스틱 세기가 걷기부터 스프린트까지 속도를 정합니다.'
+  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">R</span> 걷기 · <span class="keys">E</span> 스프린트 · <span class="keys">Space</span> 슛/태클 · <span class="keys">Shift</span> 패스 · <span class="keys">Ctrl</span> 스루패스 · <span class="keys">Q</span> 선수전환<br>2P: IJKL · P 걷기 · U 스프린트 · Enter · 오른쪽 Shift/Ctrl · O';
 
 function showTitle() {
   state = 'title';
