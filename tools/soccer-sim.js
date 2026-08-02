@@ -26,7 +26,7 @@ const GAME = path.join(__dirname, '..', 'games', 'soccer', 'index.html');
 // 고쳤다. 이는 쉬움의 제품 목표이며 봇 측정값을 사람 승률로 해석하지 않는다.
 // games/soccer/balance.md 참조.
 const TARGET_WIN = [80, 53, 23];
-const TARGET_GOALS = [5, 6];            // 경기당 총 득점 목표 범위
+const TARGET_GOALS = [2, 3];            // 골목 FC끼리 10분 총 득점 목표
 const LEVEL_NAMES = ['쉬움', '보통', '어려움'];
 const SWEEP_SPEEDS = Array.from({ length:11 }, (_, i) => (84 + i) / 100);
 const TACTIC_PRESETS = {
@@ -305,12 +305,12 @@ const HARNESS = `
       passer.x = 1050; passer.y = 680;
       offender.x = 1800; offender.y = 680;
       for (i = 0; i < teams[1].length; i++) teams[1][i].x = 1200 + i * 8;
-      ball.owner = null; ball.x = passer.x + 30; ball.y = passer.y;
+      ball.owner = null; ball.x = passer.x + 7; ball.y = passer.y;
       ball.vx = ball.vy = 0; passer.actPass = 0.1; passer.kickCd = 0;
       collide(passer);
       var collisionPassMarked = !!offside && offside.offenders.indexOf(offender) >= 0;
 
-      ball.owner = null; ball.x = offender.x - 30; ball.y = offender.y;
+      ball.owner = null; ball.x = offender.x - 7; ball.y = offender.y;
       ball.vx = 900; ball.vy = 0; ball.freeCd = 0;
       collide(offender);
       var fastTouchCalled = state === 'setpiece' && setpiece && setpiece.type === 'free';
@@ -323,8 +323,8 @@ const HARNESS = `
       startMatch('1p');
       var tackler = teams[1][1], victim = teams[0][1];
       tackler.x = 1000; tackler.y = 680; tackler.vx = 500; tackler.vy = 0;
-      victim.x = 1040; victim.y = 680; victim.vx = 0; victim.vy = 0;
-      ball.owner = victim; ball.x = 1083; ball.y = 680;
+      victim.x = 1010; victim.y = 680; victim.vx = 0; victim.vy = 0;
+      ball.owner = victim; ball.x = 1030; ball.y = 680;
       tackler.tackleT = 0.2;
       separateAll();
       var foul = state === 'setpiece' && setpiece && matchStats.fouls[1] === 1;
@@ -371,9 +371,44 @@ const HARNESS = `
       localStorage.removeItem(SAVE_KEY);
       localStorage.setItem(OLD_KEY + '.rec1',
         JSON.stringify({ w:7, d:2, l:3, bestGd:4 }));
+      localStorage.setItem(OLD_KEY + '.matchSec', '180');
       var migrated = loadSaveData();
       var storageMigrated = migrated.version === 2 &&
-        migrated.records[1].w === 7 && migrated.records[1].bestGd === 4;
+        migrated.records[1].w === 7 && migrated.records[1].bestGd === 4 &&
+        migrated.settings.matchSec === 360;
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        version:2, settings:{matchSec:180}, records:{}
+      }));
+      var migratedV2 = loadSaveData();
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        version:2, settings:{matchSec:1200}, records:{}
+      }));
+      var keptV2 = loadSaveData();
+      var matchLengthMigration = migratedV2.settings.matchSec === 360 &&
+        keptV2.settings.matchSec === 1200 && normalizeMatchSec(null) === 600;
+
+      startMatch('1p');
+      var runner = teams[0][1];
+      runner.x = FW / 2; runner.y = FH / 2; runner.vx = P_MAX; runner.vy = 0;
+      var runnerStart = runner.x;
+      for (var mv = 0; mv < 60; mv++) movePlayer(runner, 1, 0, 1/60, 1);
+      var straightSpeed = Math.abs((runner.x - runnerStart) - P_MAX) < 0.01;
+      var colliderA = teams[0][9], colliderB = teams[1][9];
+      colliderA.x = 900; colliderA.y = 500; colliderA.vx = colliderA.vy = 0;
+      colliderB.x = 900 + R_PLAYER * 2 - 1; colliderB.y = 500;
+      colliderB.vx = colliderB.vy = 0; ball.x = 1500; ball.y = 900;
+      separateAll();
+      var collisionRadius = Math.hypot(colliderA.x - colliderB.x,
+        colliderA.y - colliderB.y) >= R_PLAYER * 2 - 1e-6;
+      var oldView = view;
+      view = {dpr:2, scale:.5, rot:false, w:0, h:0, whole:true};
+      var separatedDrawScale = Math.abs(drawRadius(R_PLAYER, DRAW_PLAYER_MIN_PX) - 36) < 1e-9 &&
+        Math.abs(drawRadius(R_BALL, DRAW_BALL_MIN_PX) - 16) < 1e-9;
+      view = oldView;
+      var physicalScale = R_PLAYER === 6 && R_BALL === 2.2 && P_ACCEL === 150 &&
+        P_MAX === 190 && P_FRICTION === 4 && B_FRICTION === .82 && B_MAX === 800 &&
+        TOUCH_V === 120 && PASS_V === 340 && SHOOT_V === 660 && GOAL_H === 146 &&
+        GK_REACH_MUL === 6;
       var rounds = makeLeagueRounds(8), pairCounts = {};
       rounds.forEach(function (fixtures) {
         fixtures.forEach(function (pair) {
@@ -427,6 +462,9 @@ const HARNESS = `
         stateAfterGoal:stateAfterGoal, stateAfterHalftime:stateAfterHalftime,
         stateAtNewMatch:stateAtNewMatch,
         penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
+        physicalScale:physicalScale, straightSpeed:straightSpeed,
+        collisionRadius:collisionRadius, separatedDrawScale:separatedDrawScale,
+        matchLengthMigration:matchLengthMigration,
         formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
         tournamentValid:tournamentValid, shootoutRules:shootoutRules,
         storageMigrated:storageMigrated, leagueSchedule:leagueSchedule,
