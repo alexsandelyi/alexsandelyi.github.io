@@ -2814,15 +2814,27 @@ function soloTick() {
 function soloBall(z) {
   const p = soloPlayer || ctrl[0];
   if (!p) return;
-  ball.owner = null; ball.lastTouch = null; ball.freeCd = 0.1;
-  const d = R_PLAYER + R_BALL + 10;
-  ball.x = ball.prevX = p.x + (p.aimX || attackDir[0]) * d;
-  ball.y = ball.prevY = p.y + (p.aimY || 0) * d;
+  ball.lastTouch = null; ball.freeCd = 0;
   ball.z = z; ball.vx = ball.vy = ball.vz = 0;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
-  p.trapCd = z > FOOT_H ? 0.4 : 0;   // 낮게 놓으면 즉시 잡히니 잠깐 막는다
   setpiece = null; offside = null;
   if (state !== 'play') state = 'play';
+
+  if (z <= FOOT_H) {
+    // 지면 리셋은 소유까지 준다. 접촉 반경이 0.41m 뿐이라 공을 앞에
+    // '놓기만' 하면 손이 닿지 않아 소유가 안 되고, 그 상태에서는
+    // 패스·슛이 조용히 아무 일도 하지 않는다.
+    p.trapCd = 0;
+    ball.owner = p;
+    ball.x = ball.prevX = p.x; ball.y = ball.prevY = p.y;
+  } else {
+    // 공중 리셋은 자유공이어야 튕김·헤딩을 시험할 수 있다.
+    ball.owner = null;
+    const d = R_PLAYER + R_BALL + 10;
+    ball.x = ball.prevX = p.x + (p.aimX || attackDir[0]) * d;
+    ball.y = ball.prevY = p.y + (p.aimY || 0) * d;
+    p.trapCd = 0.4;
+  }
 }
 
 function startPractice() {
