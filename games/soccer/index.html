@@ -1024,7 +1024,18 @@ function act(teamIdx, kind, power = 0) {
 // ── 물리 ───────────────────────────────────────────────────────────
 // 경기장이 1v1 판(1000x620)의 2배 이상이라 속도도 그만큼 올렸다.
 const P_ACCEL = 150, P_MAX = 190, P_FRICTION = 4;
-const B_FRICTION = 0.82, B_MAX = 800;
+const B_MAX = 800;
+
+// 공 감속은 두 항의 합이다 — 잔디 구름 저항(속도 무관 상수) + 공기 저항
+// (속도 제곱). 전에는 초당 배율 하나(v 에 비례)로 뭉갰는데, 그러면 빠를
+// 때는 맞고 느릴 때 너무 안 멈춰서 공이 20초씩 굴러가는 꼬리가 남았다.
+//   지면: a = ROLL_A + AIR_K·v²
+//   공중: a = AIR_K·v²          (구름 저항 없음)
+// 잔디 구름 저항은 잔디 길이에 따라 0.4~1.0m/s². 중간값을 쓴다.
+const ROLL_A = 0.6 * M;              // 12 단위/s² = 0.6m/s²
+// 공기 저항 k = 0.5·ρ·Cd·A/m. 축구공 지름 0.22m·무게 0.43kg·Cd 0.25,
+// 공기 밀도 1.225 → 0.01354 /m. 논리단위로는 k/M 이다.
+const AIR_K = 0.01354 / M;           // 15m/s 에서 3.05m/s²
 
 // ── 공 높이 (z) ────────────────────────────────────────────────────
 // 지면 z=0. 공중에서는 구름저항 대신 공기저항을 쓴다 — 띄운 공이 멀리
@@ -1033,7 +1044,6 @@ const GRAVITY = 9.81 * M;            // 196.2 단위/s²
 const CROSSBAR = 2.44 * M;           // 48.8 — 규정 크로스바 높이
 const BOUNCE_Z = 0.5;                // 잔디 반발. 튈 때마다 높이 절반 이하
 const BOUNCE_XY = 0.8;               // 바운스에서 잃는 수평 속도
-const AIR_FRICTION = 0.94;           // 초당 배율 (지면은 B_FRICTION)
 const GROUND_EPS = 1;                // 0.05m 이하는 지면으로 본다
 const BOUNCE_MIN_VZ = 12;            // 이보다 느리면 튀지 않고 붙는다
 // 높이 구간 (aerial-play.md 「높이 구간」). 중간 구간을 비워두는 것이
@@ -1219,8 +1229,18 @@ function updateBall(dt) {
   }
 
   const airborne = ball.z > GROUND_EPS;
-  const f = Math.pow(airborne ? AIR_FRICTION : B_FRICTION, dt);
-  ball.vx *= f; ball.vy *= f;
+  // 감속은 진행 반대 방향으로만 작용한다. 공중에서는 속도 벡터 전체(수직
+  // 포함)에, 지면에서는 수평에만 건다. 한 프레임 감속이 현재 속도보다
+  // 크면 0 으로 자른다 — 안 그러면 공이 뒤로 굴러간다.
+  const v = airborne
+    ? Math.hypot(ball.vx, ball.vy, ball.vz)
+    : Math.hypot(ball.vx, ball.vy);
+  if (v > 0) {
+    const a = (airborne ? 0 : ROLL_A) + AIR_K * v * v;
+    const scale = a * dt >= v ? 0 : (v - a * dt) / v;
+    ball.vx *= scale; ball.vy *= scale;
+    if (airborne) ball.vz *= scale;
+  }
   if (!airborne && ball.vz === 0 && Math.hypot(ball.vx, ball.vy) < 5) {
     ball.vx = 0; ball.vy = 0;
   }

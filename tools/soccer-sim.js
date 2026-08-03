@@ -485,7 +485,7 @@ const HARNESS = `
         Math.abs(390 / portraitScaleA - CAMERA_PORTRAIT_W) < 1e-9 &&
         Math.abs(768 / portraitScaleB - CAMERA_PORTRAIT_W) < 1e-9;
       var physicalScale = R_PLAYER === 6 && R_BALL === 2.2 && P_ACCEL === 150 &&
-        P_MAX === 190 && P_FRICTION === 4 && B_FRICTION === .82 && B_MAX === 800 &&
+        P_MAX === 190 && P_FRICTION === 4 && B_MAX === 800 &&
         TOUCH_V === 120 && PASS_V === 340 && SHOOT_V === 660 && GOAL_H === 146 &&
         GK_REACH_MUL === 6 && TACKLE_TRIGGER === 32 && SHOT_BLOCK_REACH === 36 &&
         teams[0].concat(teams[1]).every(function (p) {
@@ -493,7 +493,8 @@ const HARNESS = `
         });
       // ── 공 높이(z) 물리 ────────────────────────────────────────
       var ballHeightConstants = GRAVITY === 9.81 * M && CROSSBAR === 2.44 * M &&
-        BOUNCE_Z === .5 && AIR_FRICTION === .94 && FOOT_H === 10 && GK_HIGH_H === 52;
+        BOUNCE_Z === .5 && FOOT_H === 10 && GK_HIGH_H === 52 &&
+        ROLL_A === 12 && Math.abs(AIR_K - 0.01354 / M) < 1e-12;
 
       var dtq = 1 / 60;
       function launch(z0, vz0, vx0) {
@@ -502,19 +503,46 @@ const HARNESS = `
         ball.vx = vx0 || 0; ball.vy = 0; ball.z = z0; ball.vz = vz0;
       }
 
-      // 체공 2.02초가 나오는 수직 속도로 쏘아 올려 정점과 체공을 잰다.
-      // 정점 이론값은 vz²/(2g). 적분 오차 5% 안이면 통과.
+      // 감속 모델을 한 프레임 단위로 직접 검증한다.
+      //   지면 a = ROLL_A + AIR_K·v²   공중 a = AIR_K·v²
+      function decelOf(z, speed) {
+        launch(z, 0, speed);
+        var before = Math.hypot(ball.vx, ball.vy);
+        updateBall(dtq);
+        // 지면이면 중력·바운스가 개입하지 않도록 z 를 유지한 채 수평만 본다.
+        return (before - Math.hypot(ball.vx, ball.vy)) / dtq;
+      }
+      var vTest = 300;
+      var groundExpect = ROLL_A + AIR_K * vTest * vTest;
+      var airExpect = AIR_K * vTest * vTest;
+      var dragModel =
+        Math.abs(decelOf(0, vTest) - groundExpect) / groundExpect < .02 &&
+        Math.abs(decelOf(200, vTest) - airExpect) / airExpect < .05;
+
+      // 공기 저항이 수직 성분에도 걸리므로 정점과 체공이 진공보다 낮고 짧다.
+      // 그러면서도 과도하게 죽지는 않아야 한다.
       startMatch('1p');
       var vz0 = GRAVITY * 1.01;
       launch(0, vz0);
       var apex = 0, flight = 0;
-      for (var q = 0; q < 600; q++) {
+      for (var q = 0; q < 900; q++) {
         updateBall(dtq); flight += dtq;
         if (ball.z > apex) apex = ball.z;
         if (ball.z <= 0 && q > 2) break;
       }
-      var parabola = Math.abs(flight - 2.02) < .12 &&
-        Math.abs(apex - vz0 * vz0 / (2 * GRAVITY)) / (vz0 * vz0 / (2 * GRAVITY)) < .05;
+      var vacApex = vz0 * vz0 / (2 * GRAVITY), vacFlight = 2 * vz0 / GRAVITY;
+      var ballistic = apex > 0 && apex < vacApex && apex > vacApex * .6 &&
+        flight > 0 && flight < vacFlight && flight > vacFlight * .7;
+
+      // 느린 공은 구름 저항이 지배해 금방 선다. 지수 감쇠에서는 속도에
+      // 비례해 감속해 20초씩 굴러가는 꼬리가 남았다.
+      launch(0, 0, 2 * M);                    // 2m/s
+      var slowT = 0, slowX = ball.x;
+      for (var q4 = 0; q4 < 900; q4++) {
+        updateBall(dtq); slowT += dtq;
+        if (ball.vx === 0) break;
+      }
+      var slowBallStops = slowT < 4 && (ball.x - slowX) < 5 * M;
 
       // 바운스마다 정점이 크게 줄고 결국 완전히 멈춘다.
       launch(100, 0);
@@ -528,15 +556,9 @@ const HARNESS = `
       var bounceDecay = apexes.length >= 2 && apexes[1] < apexes[0] * .4 &&
         ball.z === 0 && ball.vz === 0;
 
-      // 비행 중에는 구름저항이 없어 수평 속도를 더 잘 유지한다.
-      // 총 도달거리는 바운스 손실 때문에 오히려 짧다 (ball-height.md 참조).
-      function speedAfter(seconds, vz0b) {
-        launch(0, vz0b, 300);
-        var n = Math.round(seconds * 60);
-        for (var q3 = 0; q3 < n; q3++) updateBall(dtq);
-        return Math.hypot(ball.vx, ball.vy);
-      }
-      var airHoldsSpeed = speedAfter(1, GRAVITY * .8) > speedAfter(1, 0) * 1.1;
+      // 공중에는 구름 저항이 없어 같은 속도에서 수평 감속이 더 작다.
+      // 차이는 정확히 ROLL_A 만큼이다.
+      var airLighterThanGround = decelOf(0, 300) - decelOf(200, 300) > ROLL_A * .9;
 
       // 크로스바 위는 골이 아니라 골킥, 아래는 골이다.
       function goalLineTest(z) {
@@ -632,8 +654,9 @@ const HARNESS = `
         penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
         goalClassification:goalClassification,
         physicalScale:physicalScale, straightSpeed:straightSpeed,
-        ballHeightConstants:ballHeightConstants, parabola:parabola,
-        bounceDecay:bounceDecay, airHoldsSpeed:airHoldsSpeed,
+        ballHeightConstants:ballHeightConstants,
+        bounceDecay:bounceDecay, dragModel:dragModel, ballistic:ballistic,
+        slowBallStops:slowBallStops, airLighterThanGround:airLighterThanGround,
         crossbar:crossbar,
         footTraps:footTraps, chestDeflects:chestDeflects, headHeads:headHeads,
         aboveHeadUntouched:aboveHeadUntouched, gkReachesHigh:gkReachesHigh,
