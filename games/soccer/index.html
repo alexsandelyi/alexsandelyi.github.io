@@ -1497,6 +1497,10 @@ function kickOwned(p, kind, power = 0.65) {
     lift = shotLift(Math.max(120, dir === 1 ? FW - p.x : p.x), v, power);
   } else {
     const through = kind === 'through';
+    // 사람의 `\` 패스는 무조건 땅볼이고, 누른 길이가 높이가 아니라 거리를
+    // 정한다. AI 도 이 함수를 쓰므로 조작 중인 선수에게만 적용한다 —
+    // 전부 땅볼로 막으면 AI 의 크로스가 사라진다. 사람이 띄우려면 `]`.
+    const groundPass = p === ctrl[0] && !through;
     const t = passTarget(p, through);
     if (t) {
       const lead = through ? Math.min(230, Math.hypot(t.vx, t.vy) * 0.55 + 90) : 0;
@@ -1508,7 +1512,7 @@ function kickOwned(p, kind, power = 0.65) {
         420 + d * p.passMul * (through ? 1.0 : 0.9));
       // 측면 깊은 위치에서 중앙으로 보내면 크로스다. 체공을 길게 줘서
       // 받는 선수가 낙하 지점까지 따라갈 수 있게 한다.
-      const cross = Math.min(p.y, FH - p.y) < FH * 0.24 &&
+      const cross = !groundPass && Math.min(p.y, FH - p.y) < FH * 0.24 &&
         (dir === 1 ? p.x : FW - p.x) > FW * 0.58 &&
         Math.abs(t.y - FH / 2) < FH * 0.30;
       if (cross) {
@@ -1516,15 +1520,21 @@ function kickOwned(p, kind, power = 0.65) {
         lift = loftFor(d, v, 1.6);
       } else if (through && lp > 0.5) {
         v *= 0.7; lift = loftFor(d, v, 2.0);        // 칩 — 수비선 뒤로
-      } else if (lp > 0) {
+      } else if (!groundPass && lp > 0) {
         v *= 0.9; lift = loftFor(d, v, 1.1) * lp;   // 로빙 패스
       }
     } else if (aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 800; ty = p.y + p.aimY / aimMag * 800;
       v = PASS_V * p.passMul * (through ? 0.95 : 0.8);
-      if (lp > 0) { v *= 0.9; lift = loftFor(800, v, 1.1) * lp; }
+      if (!groundPass && lp > 0) { v *= 0.9; lift = loftFor(800, v, 1.1) * lp; }
     } else {
       const a = aimAt(p.side); tx = a.x; ty = a.y; v = PASS_V * 0.8;
+    }
+    // 방향은 위에서 고른 대상·조준을 그대로 쓰고, 세기만 누른 길이로
+    // 덮어쓴다. 짧게 누르면 20m, 끝까지 누르면 54m 쯤 굴러간다.
+    if (groundPass) {
+      v = PASS_V * p.passMul * (0.45 + 0.55 * power);
+      lift = 0;
     }
   }
   if (kind === 'pass' || kind === 'through') markOffside(p);
