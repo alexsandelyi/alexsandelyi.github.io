@@ -34,7 +34,8 @@
 | `assets/clickable-v2/` (8개), `assets/lettering-v1/` (3개) | `index.html` 이 상대경로로 참조 — 함께 배포해야 한다 |
 | `assets/clickable-v1/` | 미참조 구버전. gitignore |
 | `app-ads.txt` | AdMob 인증. **도메인 루트에 있어야 하므로 지우면 안 된다** |
-| `games/soccer/` | 동네 축구 11v11. 의존성 없는 Canvas 2D 한 파일 |
+| `games/soccer/` | 동네 축구 11v11. 의존성 없는 Canvas 2D |
+| `games/soccer/js/` | 게임 코드 11개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
 | `games/soccer/*.md` | 설계 문서. 목차는 `README.md`, 작성 규칙은 `games/soccer/AGENTS.md` |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정. 사이트 동작과 무관 |
 | `tmp/` | 패치 스크립트와 번들 추출물. gitignore |

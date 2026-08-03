@@ -14,7 +14,7 @@
 // 한쪽에만 생긴다 (실제로 style.setProperty 로 겪었다).
 
 const vm = require('vm');
-const { readGameSource, makeSandbox, mulberry32 } = require('./soccer-sim.js');
+const { readGameSource, makeSandbox, mulberry32 } = require('./soccer-runtime.js');
 
 // ── 게임 스코프 안에서 도는 실측 하네스 ────────────────────────────
 const LAB = `
