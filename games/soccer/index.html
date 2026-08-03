@@ -2760,12 +2760,122 @@ requestAnimationFrame(resize);        // 초기 flex/header 레이아웃이 확�
 buildTeams();
 resetPositions(0);
 
+// ── 연습 모드 (?solo) ──────────────────────────────────────────────
+// 혼자 조작 감각을 시험하려고 만든 모드. 나머지 선수를 구석에 치우고
+// 시계를 멈춘다. URL 에 ?solo 가 없으면 어떤 코드도 돌지 않는다.
+// location 이 없는 환경(측정 도구의 vm)에서도 안전하게 꺼진다.
+const solo = typeof location !== 'undefined' &&
+  new URLSearchParams(location.search).has('solo');
+let soloKeeper = false, soloRival = false, soloHelp = true;
+let soloPlayer = null;
+
+function soloKept(p) {
+  if (p === soloPlayer) return true;
+  if (soloKeeper && p.isGK && p.side === 1) return true;
+  if (soloRival && p.side === 1 && p.no === 5) return true;
+  return false;
+}
+
+// 치운 선수는 목표 지점을 자기 자리로 고정해 가속하지 않게 한다.
+function soloTick() {
+  if (!solo) return;
+  if (state === 'title' || state === 'end') { soloPlayer = null; return; }
+
+  // buildTeams() 가 선수 객체를 새로 만들므로 배열에 남아 있는지로 확인한다.
+  // 옛 객체를 붙들면 조작이 먹지 않는다.
+  if (!soloPlayer || teams[0].indexOf(soloPlayer) < 0) {
+    soloPlayer = teams[0][9];
+    soloPlayer.x = FW / 2 - 80; soloPlayer.y = FH / 2;
+    soloPlayer.vx = soloPlayer.vy = 0;
+    soloPlayer.aimX = attackDir[0]; soloPlayer.aimY = 0;
+    ctrl[0] = soloPlayer;
+    setpiece = null; offside = null; state = 'play';
+    soloBall(0);
+  }
+  ctrl[0] = soloPlayer;            // 치운 선수에게 조작이 넘어가지 않게 한다
+  ctrlLock[0] = 1;
+
+  if (state === 'play') { clock = MATCH_SEC / 2; addedBank = 0; inAdded = false; }
+  for (const side of [0, 1]) for (const p of teams[side]) {
+    if (soloKept(p)) continue;
+    p.x = 70 + p.no * 26; p.y = side === 0 ? 70 : FH - 70;
+    p.vx = p.vy = 0; p.aiT = 1e9; p.aiTx = p.x; p.aiTy = p.y;
+    p.tackleT = 0; p.blockT = 0; p.gkClaim = false;
+  }
+}
+
+function soloBall(z) {
+  const p = soloPlayer || ctrl[0];
+  if (!p) return;
+  ball.owner = null; ball.lastTouch = null; ball.freeCd = 0.1;
+  const d = R_PLAYER + R_BALL + 10;
+  ball.x = ball.prevX = p.x + (p.aimX || attackDir[0]) * d;
+  ball.y = ball.prevY = p.y + (p.aimY || 0) * d;
+  ball.z = z; ball.vx = ball.vy = ball.vz = 0;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
+  p.trapCd = z > FOOT_H ? 0.4 : 0;   // 낮게 놓으면 즉시 잡히니 잠깐 막는다
+  setpiece = null; offside = null;
+  if (state !== 'play') state = 'play';
+}
+
+if (solo) addEventListener('keydown', e => {
+  if (e.repeat) return;
+  const keysUsed = ['KeyB','KeyV','KeyG','KeyT','KeyH',
+                    'Digit1','Digit2','Digit3','Digit4'];
+  if (!keysUsed.includes(e.code)) return;
+  e.preventDefault();
+  if (e.code === 'KeyB' || e.code === 'Digit1') soloBall(0);
+  if (e.code === 'Digit2') soloBall(0.75 * M);     // 가슴 구간
+  if (e.code === 'Digit3') soloBall(1.8 * M);      // 헤딩 구간
+  if (e.code === 'Digit4') soloBall(4 * M);        // 아무도 못 닿는 높이
+  if (e.code === 'KeyV') { ball.vx = ball.vy = ball.vz = 0; }
+  if (e.code === 'KeyG') soloKeeper = !soloKeeper;
+  if (e.code === 'KeyT') soloRival = !soloRival;
+  if (e.code === 'KeyH') soloHelp = !soloHelp;
+});
+
+function drawSoloHud() {
+  if (!solo) return;
+  const dpr = view.dpr, pad = 10 * dpr, lh = 16 * dpr;
+  const p = soloPlayer;
+  const band = ball.z <= FOOT_H ? '발' : ball.z <= CHEST_H ? '가슴'
+    : ball.z <= HEAD_H ? '헤딩' : ball.z <= GK_HIGH_H ? 'GK만' : '무접촉';
+  const lines = [
+    `공 높이 ${(ball.z / M).toFixed(2)}m (${band})  ` +
+      `속도 ${(Math.hypot(ball.vx, ball.vy) / M * 3.6).toFixed(1)}km/h  ` +
+      `수직 ${(ball.vz / M).toFixed(1)}m/s`,
+    `선수 ${p ? (Math.hypot(p.vx, p.vy) / M * 3.6).toFixed(1) : '-'}km/h  ` +
+      `체력 ${p ? Math.round(p.energy * 100) : '-'}%  ` +
+      `소유 ${ball.owner === p ? '나' : ball.owner ? '상대' : '없음'}  ` +
+      `충전 ${p ? (p.shootCharge || 0).toFixed(2) : '-'}`,
+    `상대GK ${soloKeeper ? 'ON' : 'off'}  상대선수 ${soloRival ? 'ON' : 'off'}  ` +
+      `슛 ${matchStats.shots[0]}  헤딩 ${matchStats.headers[0]}  득점 ${score[0]}`
+  ];
+  if (soloHelp) lines.push(
+    'B 공 리셋 · 1~4 높이(0/0.75/1.8/4m) · V 공 정지 · G 상대GK · T 상대선수 · H 도움말');
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = `${12 * dpr}px ${bodyFont()}`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  const w = Math.max(...lines.map(t => ctx.measureText(t).width)) + pad * 2;
+  const boxH = lh * lines.length + pad;
+  ctx.fillStyle = 'rgba(21,37,40,.82)';
+  ctx.fillRect(pad, canvas.height - pad - boxH, w, boxH);
+  ctx.fillStyle = '#F2F7F4';
+  lines.forEach((t, i) =>
+    ctx.fillText(t, pad * 2, canvas.height - pad - boxH + pad / 2 + lh * i));
+  ctx.restore();
+}
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);   // 백그라운드 복귀 시 점프 방지
   last = now;
+  soloTick();
   step(dt);
   draw();
+  drawSoloHud();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
