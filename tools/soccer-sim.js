@@ -1027,7 +1027,13 @@ async function main() {
   printNormalResults(rows);
 }
 
-if (isMainThread) {
+// 게임 런타임 부팅 부품을 공유한다. soccer-lab.js 가 같은 스텁을 쓴다 —
+// 복사해 두면 style.setProperty 같은 구멍이 한쪽에만 생긴다.
+module.exports = { GAME, readGameSource, makeSandbox, mulberry32 };
+
+if (require.main !== module && isMainThread) {
+  // 라이브러리로 require 된 경우에는 측정을 실행하지 않는다.
+} else if (isMainThread) {
   main().catch(error => {
     console.error('측정 실패:', error && error.stack || error);
     process.exitCode = 1;
