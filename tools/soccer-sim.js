@@ -476,6 +476,76 @@ const HARNESS = `
         teams[0].concat(teams[1]).every(function (p) {
           return p.speedMul <= 1;
         });
+      // ── 공 높이(z) 물리 ────────────────────────────────────────
+      var ballHeightConstants = GRAVITY === 9.81 * M && CROSSBAR === 2.44 * M &&
+        BOUNCE_Z === .5 && AIR_FRICTION === .94 && FOOT_H === 10 && GK_HIGH_H === 52;
+
+      var dtq = 1 / 60;
+      function launch(z0, vz0, vx0) {
+        ball.owner = null; ball.lastTouch = null; ball.freeCd = 0;
+        ball.x = FW / 2; ball.y = FH / 2;
+        ball.vx = vx0 || 0; ball.vy = 0; ball.z = z0; ball.vz = vz0;
+      }
+
+      // 체공 2.02초가 나오는 수직 속도로 쏘아 올려 정점과 체공을 잰다.
+      // 정점 이론값은 vz²/(2g). 적분 오차 5% 안이면 통과.
+      startMatch('1p');
+      var vz0 = GRAVITY * 1.01;
+      launch(0, vz0);
+      var apex = 0, flight = 0;
+      for (var q = 0; q < 600; q++) {
+        updateBall(dtq); flight += dtq;
+        if (ball.z > apex) apex = ball.z;
+        if (ball.z <= 0 && q > 2) break;
+      }
+      var parabola = Math.abs(flight - 2.02) < .12 &&
+        Math.abs(apex - vz0 * vz0 / (2 * GRAVITY)) / (vz0 * vz0 / (2 * GRAVITY)) < .05;
+
+      // 바운스마다 정점이 크게 줄고 결국 완전히 멈춘다.
+      launch(100, 0);
+      var apexes = [], rising = false, prevZ = ball.z;
+      for (var q2 = 0; q2 < 4000; q2++) {
+        updateBall(dtq);
+        if (ball.z > prevZ) rising = true;
+        else if (rising) { rising = false; apexes.push(prevZ); }
+        prevZ = ball.z;
+      }
+      var bounceDecay = apexes.length >= 2 && apexes[1] < apexes[0] * .4 &&
+        ball.z === 0 && ball.vz === 0;
+
+      // 비행 중에는 구름저항이 없어 수평 속도를 더 잘 유지한다.
+      // 총 도달거리는 바운스 손실 때문에 오히려 짧다 (ball-height.md 참조).
+      function speedAfter(seconds, vz0b) {
+        launch(0, vz0b, 300);
+        var n = Math.round(seconds * 60);
+        for (var q3 = 0; q3 < n; q3++) updateBall(dtq);
+        return Math.hypot(ball.vx, ball.vy);
+      }
+      var airHoldsSpeed = speedAfter(1, GRAVITY * .8) > speedAfter(1, 0) * 1.1;
+
+      // 크로스바 위는 골이 아니라 골킥, 아래는 골이다.
+      function goalLineTest(z) {
+        startMatch('1p');
+        var before = score[1];
+        ball.owner = null; ball.lastTouch = teams[1][9];
+        ball.x = -1; ball.y = FH / 2; ball.z = z; ball.vz = 0;
+        var handled = outOfPlay(ball.x, ball.y);
+        return { handled:handled, scored:score[1] - before, type:setpiece && setpiece.type };
+      }
+      var over = goalLineTest(CROSSBAR + 5), under = goalLineTest(CROSSBAR - 5);
+      var crossbar = over.scored === 0 && over.type === 'goalkick' && under.scored === 1;
+
+      // 발이 닿지 않는 높이는 아무도 건드리지 못하고, 낮으면 잡는다.
+      startMatch('1p');
+      var kicker = teams[0][9];
+      kicker.x = FW / 2; kicker.y = FH / 2; kicker.vx = kicker.vy = 0; kicker.trapCd = 0;
+      launch(FOOT_H + 5, 0);
+      ball.x = kicker.x + 4; ball.y = kicker.y;
+      collide(kicker);
+      var heightGate = ball.owner === null;
+      ball.z = 0; ball.vz = 0; collide(kicker);
+      var footStillWorks = ball.owner === kicker;
+
       var rounds = makeLeagueRounds(8), pairCounts = {};
       rounds.forEach(function (fixtures) {
         fixtures.forEach(function (pair) {
@@ -531,6 +601,9 @@ const HARNESS = `
         penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
         goalClassification:goalClassification,
         physicalScale:physicalScale, straightSpeed:straightSpeed,
+        ballHeightConstants:ballHeightConstants, parabola:parabola,
+        bounceDecay:bounceDecay, airHoldsSpeed:airHoldsSpeed,
+        crossbar:crossbar, heightGate:heightGate, footStillWorks:footStillWorks,
         movementPaces:movementPaces,
         collisionRadius:collisionRadius, separatedDrawScale:separatedDrawScale,
         cameraViewportStable:cameraViewportStable,

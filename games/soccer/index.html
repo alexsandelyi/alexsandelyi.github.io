@@ -410,7 +410,7 @@ const matchStats = {
   fouls:[0,0], cards:[0,0], offsides:[0,0], setpieces:{}, events:[]
 };
 const ball = {
-  x:0, y:0, vx:0, vy:0, owner:null, lastTouch:null, freeCd:0,
+  x:0, y:0, z:0, vx:0, vy:0, vz:0, owner:null, lastTouch:null, freeCd:0,
   shotSide:-1, shotCounted:false, blockCounted:false, prevX:0, prevY:0
 };
 const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
@@ -617,7 +617,7 @@ function resetPositions(kickSide) {
     }
   }
   ball.x = ball.prevX = FW / 2; ball.y = ball.prevY = FH / 2;
-  ball.vx = ball.vy = 0;
+  ball.vx = ball.vy = 0; ball.z = 0; ball.vz = 0;
   ball.owner = ball.lastTouch = null; ball.freeCd = 0;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false; offside = null;
   cam.x = FW / 2; cam.y = FH / 2;
@@ -993,6 +993,23 @@ function act(teamIdx, kind) {
 // 경기장이 1v1 판(1000x620)의 2배 이상이라 속도도 그만큼 올렸다.
 const P_ACCEL = 150, P_MAX = 190, P_FRICTION = 4;
 const B_FRICTION = 0.82, B_MAX = 800;
+
+// ── 공 높이 (z) ────────────────────────────────────────────────────
+// 지면 z=0. 공중에서는 구름저항 대신 공기저항을 쓴다 — 띄운 공이 멀리
+// 빠르게 가는 것이 "속도가 조절된다"는 감각의 물리적 근거다.
+const GRAVITY = 9.81 * M;            // 196.2 단위/s²
+const CROSSBAR = 2.44 * M;           // 48.8 — 규정 크로스바 높이
+const BOUNCE_Z = 0.5;                // 잔디 반발. 튈 때마다 높이 절반 이하
+const BOUNCE_XY = 0.8;               // 바운스에서 잃는 수평 속도
+const AIR_FRICTION = 0.94;           // 초당 배율 (지면은 B_FRICTION)
+const GROUND_EPS = 1;                // 0.05m 이하는 지면으로 본다
+const BOUNCE_MIN_VZ = 12;            // 이보다 느리면 튀지 않고 붙는다
+// 높이별 접촉 한계. 헤딩 구간은 3단계에서 연다.
+const FOOT_H = 0.5 * M;              // 10 — 발로 다룰 수 있는 높이
+const GK_HIGH_H = 2.6 * M;           // 52 — 골키퍼 점프·다이빙
+// 그리기용 과장값(실측 아님). 톱다운에서 높이를 읽으려면 필요하다.
+const BALL_LIFT = 0.5;               // z 1단위당 화면 위로 0.5단위
+const BALL_GROW = 200, BALL_GROW_MAX = 1.8;
 const TOUCH_V = 120, PASS_V = 340, SHOOT_V = 660;
 const TRAP_R = R_PLAYER + R_BALL + 7, TRAP_V = 620;
 const OWNER_SPEED = 0.88, REOWN_CD = 0.35;
@@ -1100,7 +1117,8 @@ function outOfPlay(x, y) {
     return true;
   }
   if (x < 0 || x > FW) {
-    if (inGoalMouth(y)) {
+    // 크로스바 위로 넘어간 공은 골이 아니다. 아래 골킥·코너로 떨어진다.
+    if (inGoalMouth(y) && ball.z < CROSSBAR) {
       goal(1 - defendingAtGoal(x));
       return true;
     }
@@ -1133,6 +1151,7 @@ function updateBall(dt) {
     const d = R_PLAYER + R_BALL + 4;
     ball.x = p.x + ax * d;
     ball.y = p.y + ay * d;
+    ball.z = 0; ball.vz = 0;            // 드리블 중에는 발밑에 붙어 있다
     ball.vx = p.vx; ball.vy = p.vy;
     // 골라인을 공과 함께 넘는 마지막 터치도 문전 슛 시도로 분류한다.
     const crossedGoal = attackDir[p.side] === 1 ? ball.x >= FW : ball.x <= 0;
@@ -1143,10 +1162,27 @@ function updateBall(dt) {
     return;
   }
   ball.x += ball.vx * dt; ball.y += ball.vy * dt;
-  const f = Math.pow(B_FRICTION, dt);
-  ball.vx *= f; ball.vy *= f;
-  if (Math.hypot(ball.vx, ball.vy) < 5) { ball.vx = 0; ball.vy = 0; }
 
+  // 지면에 붙어 있고 수직 속도도 없으면 중력을 적분하지 않는다.
+  // 그러지 않으면 매 프레임 vz 가 음수로 쌓여 미세 바운스가 남는다.
+  if (ball.z > 0 || ball.vz !== 0) {
+    ball.vz -= GRAVITY * dt;
+    ball.z += ball.vz * dt;
+    if (ball.z <= 0) {
+      ball.z = 0;
+      if (-ball.vz > BOUNCE_MIN_VZ) {
+        ball.vz = -ball.vz * BOUNCE_Z;
+        ball.vx *= BOUNCE_XY; ball.vy *= BOUNCE_XY;
+      } else ball.vz = 0;
+    }
+  }
+
+  const airborne = ball.z > GROUND_EPS;
+  const f = Math.pow(airborne ? AIR_FRICTION : B_FRICTION, dt);
+  ball.vx *= f; ball.vy *= f;
+  if (!airborne && ball.vz === 0 && Math.hypot(ball.vx, ball.vy) < 5) {
+    ball.vx = 0; ball.vy = 0;
+  }
 }
 
 function takePossession(p) {
@@ -1156,17 +1192,19 @@ function takePossession(p) {
   if (offside) offside = null;
   ball.owner = p; ball.lastTouch = p;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
+  ball.z = 0; ball.vz = 0;
   ball.vx = p.vx; ball.vy = p.vy;
   return true;
 }
 
-function releaseBall(p, vx, vy) {
+function releaseBall(p, vx, vy, vz = 0) {
   ball.owner = null; ball.lastTouch = p; ball.freeCd = 0.08;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
   p.trapCd = REOWN_CD; p.kickCd = Math.max(p.kickCd, 0.22);
   const sp = Math.hypot(vx, vy);
   ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
   ball.vy = sp > B_MAX ? vy / sp * B_MAX : vy;
+  ball.vz = vz;
 }
 
 const SET_WAIT = {
@@ -1180,6 +1218,7 @@ function beginSetpiece(type, side, spot) {
     matchStats.events.push({ event:type, side, x:Math.round(spot.x), y:Math.round(spot.y) });
   if (type === 'corner') matchStats.corners[side]++;
   ball.owner = null; ball.vx = ball.vy = 0; ball.freeCd = 0.1;
+  ball.z = 0; ball.vz = 0;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
   ball.x = Math.max(0, Math.min(FW, spot.x));
   ball.y = Math.max(0, Math.min(FH, spot.y));
@@ -1225,30 +1264,39 @@ function beginSetpiece(type, side, spot) {
   state = 'setpiece';
 }
 
+// 목표 지점에 떨어지도록 수직 속도를 정한다. 체공 t 동안 수평으로
+// 날아간 거리가 목표와 맞아야 받는 선수가 따라갈 수 있다.
+function loftFor(dist, v, maxT = 2.6) {
+  if (v <= 0) return 0;
+  return GRAVITY * Math.min(maxT, dist / v) / 2;
+}
+
 function takeSetpiece(kind = 'pass') {
   if (!setpiece) return;
   const s = setpiece, p = s.taker;
-  let tx, ty, v;
+  let tx, ty, v, lift = 0;
   const needsTarget = s.type === 'kickoff' || (s.type === 'free' && kind !== 'shoot');
   const target = needsTarget ? passTarget(p, kind === 'through') : null;
   const isShot = s.type === 'penalty' || kind === 'shoot';
   if (s.type === 'penalty') {
     const a = aimAt(s.side); tx = a.x; ty = a.y; v = SHOOT_V;
   } else if (s.type === 'throw') {
+    // 던지기는 15m/s. 현실 전환 때 재조정되지 않아 820(148km/h)이었다.
     tx = Math.max(180, Math.min(FW - 180, ball.x + attackDir[s.side] * 180));
     ty = ball.y < FH / 2 ? 350 : FH - 350;
-    v = 820;
+    v = 300;
   } else if (s.type === 'corner') {
     const goalX = attackDir[s.side] === 1 ? FW : 0;
     tx = goalX - attackDir[s.side] * PA_D * 0.55;
     ty = FH / 2; v = PASS_V;
   } else if (s.type === 'goalkick') {
-    tx = p.x + attackDir[s.side] * 900;
-    ty = FH / 2 + (Math.random() * 2 - 1) * 320; v = 1150;
+    // 골킥은 26m/s. 전환 전 1150(207km/h)은 슛보다 빨랐다.
+    tx = p.x + attackDir[s.side] * 1000;
+    ty = FH / 2 + (Math.random() * 2 - 1) * 320; v = 520;
   } else if (s.type === 'kickoff') {
     const mate = target || teams[s.side].find(t => t !== p && !t.isGK);
     tx = mate ? mate.x : p.x + attackDir[s.side] * 300;
-    ty = mate ? mate.y : p.y; v = 650;
+    ty = mate ? mate.y : p.y; v = 260;
   } else if (target && kind !== 'shoot') {
     tx = target.x + (kind === 'through' ? attackDir[s.side] * 130 : 0);
     ty = target.y; v = PASS_V * 0.9;
@@ -1257,8 +1305,15 @@ function takeSetpiece(kind = 'pass') {
     v = kind === 'shoot' ? SHOOT_V * 0.85 : PASS_V * 0.8;
   }
   const ang = Math.atan2(ty - ball.y, tx - ball.x);
+  const dist = Math.hypot(tx - ball.x, ty - ball.y);
+  // 코너·골킥·스로인은 띄운다. 킥오프와 슛은 땅으로 간다.
+  if (s.type === 'corner' || s.type === 'goalkick') lift = loftFor(dist, v);
+  else if (s.type === 'throw') lift = loftFor(dist, v, 1.4);
+  else if (s.type === 'free' && !isShot) lift = loftFor(dist, v, 1.0) * 0.6;
+  v = Math.min(v, B_MAX);
   ball.lastTouch = p; ball.owner = null; ball.freeCd = 0.12;
   ball.vx = Math.cos(ang) * v; ball.vy = Math.sin(ang) * v;
+  ball.z = 0; ball.vz = lift;
   const goalBound = goalBoundKick(p.side, ball.x, ball.y, ball.vx, ball.vy);
   ball.shotSide = isShot || goalBound ? p.side : -1;
   ball.shotCounted = ball.blockCounted = false;
@@ -1398,6 +1453,9 @@ function ballContactPoint(p) {
 }
 
 function collide(p) {
+  // 높이 게이트. 발이 닿지 않는 공은 아예 건드리지 못한다.
+  // 헤딩 구간(1.5~2.3m)은 3단계에서 연다.
+  if (ball.z > (p.isGK ? GK_HIGH_H : FOOT_H)) return;
   const contact = ballContactPoint(p);
   const dx = contact.x - p.x, dy = contact.y - p.y;
   const gkAssist = p.isGK && p.side === 0 && mode === '1p'
@@ -2159,14 +2217,26 @@ function drawPlayer(p) {
 }
 
 function drawBall() {
-  const r = drawRadius(R_BALL, DRAW_BALL_MIN_PX);
-  ctx.fillStyle = 'rgba(0,0,0,.3)';
-  ctx.beginPath(); ctx.ellipse(ball.x + r * .24, ball.y + r * .38,
-    r, r * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+  const base = drawRadius(R_BALL, DRAW_BALL_MIN_PX);
+  const r = base * Math.min(BALL_GROW_MAX, 1 + ball.z / BALL_GROW);
+  const lift = ball.z * BALL_LIFT;
+
+  // 화면 위쪽은 가로 화면에서 필드 -y, 세로 화면에서 필드 +x 다.
+  // 변환이 화면y = -s·필드x 로 사상하기 때문이다. 필드 좌표로 그냥 빼면
+  // 세로 화면에서 공이 위가 아니라 옆으로 뜬다.
+  const ox = view.rot ? lift : 0;
+  const oy = view.rot ? 0 : -lift;
+
+  // 그림자는 지면에 남는다. 공과 벌어지는 거리가 높이의 주된 단서다.
+  const sh = base * (1 - Math.min(.45, ball.z / 600));
+  ctx.fillStyle = `rgba(0,0,0,${Math.max(.12, .34 - ball.z / 900).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.ellipse(ball.x, ball.y, sh, sh * .8, 0, 0, Math.PI * 2); ctx.fill();
+
   ctx.fillStyle = C.ball;
-  ctx.beginPath(); ctx.arc(ball.x, ball.y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ball.x + ox, ball.y + oy, r, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#152528';
-  ctx.beginPath(); ctx.arc(ball.x, ball.y, r * 0.42, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ball.x + ox, ball.y + oy, r * 0.42, 0, Math.PI * 2); ctx.fill();
 }
 
 // 미니맵은 화면 좌표로 그린다(경기장 변환·회전과 무관하게 항상 가로).
