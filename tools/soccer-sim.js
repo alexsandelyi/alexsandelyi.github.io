@@ -494,7 +494,7 @@ const HARNESS = `
       // ── 공 높이(z) 물리 ────────────────────────────────────────
       var ballHeightConstants = GRAVITY === 9.81 * M && CROSSBAR === 2.44 * M &&
         BOUNCE_Z === .5 && FOOT_H === 10 && GK_HIGH_H === 52 &&
-        ROLL_A === 12 && Math.abs(AIR_K - 0.01354 / M) < 1e-12;
+        ROLL_A === 24 && Math.abs(AIR_K - 0.01354 / M) < 1e-12;
 
       var dtq = 1 / 60;
       function launch(z0, vz0, vx0) {

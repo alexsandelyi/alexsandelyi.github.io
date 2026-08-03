@@ -324,7 +324,8 @@ const keys = Object.create(null);
 addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true;
-  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+  // Space 는 이제 안 쓰지만 페이지 스크롤을 막으려고 기본 동작만 끈다.
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftRight',
        'Enter','Slash','Quote','Semicolon','Period'].includes(e.code)) e.preventDefault();
   if (e.code === 'Enter') beginAction(0);          // 슛 (공이 없으면 태클)
   if (e.code === 'Period') act(0, 'switch');
@@ -348,7 +349,7 @@ addEventListener('blur', () => {
 
 // 킥 충전 시간. shootCharge 와 같은 1.05초를 쓴다.
 const KICK_CHARGE_MS = 1050;
-const PASS_KEYS = { Space:[0, 'pass'], Slash:[0, 'through'] };
+const PASS_KEYS = { ShiftRight:[0, 'pass'], Slash:[0, 'through'] };
 const holdStart = Object.create(null);
 const holdPower = (t0) =>
   Math.max(0, Math.min(1, (performance.now() - t0) / KICK_CHARGE_MS));
@@ -1025,8 +1026,9 @@ const B_MAX = 800;
 // 때는 맞고 느릴 때 너무 안 멈춰서 공이 20초씩 굴러가는 꼬리가 남았다.
 //   지면: a = ROLL_A + AIR_K·v²
 //   공중: a = AIR_K·v²          (구름 저항 없음)
-// 잔디 구름 저항은 잔디 길이에 따라 0.4~1.0m/s². 중간값을 쓴다.
-const ROLL_A = 0.6 * M;              // 12 단위/s² = 0.6m/s²
+// 잔디 구름 저항. 구름저항 계수 Crr 는 잔디 위에서 0.05~0.15 이고
+// a = Crr·g 다. 0.6m/s²(Crr 0.061)은 공이 너무 잘 굴러서 0.122 로 올렸다.
+const ROLL_A = 1.2 * M;              // 24 단위/s² = 1.2m/s² (Crr 0.122)
 // 공기 저항 k = 0.5·ρ·Cd·A/m. 축구공 지름 0.22m·무게 0.43kg·Cd 0.25,
 // 공기 밀도 1.225 → 0.01354 /m. 논리단위로는 k/M 이다.
 const AIR_K = 0.01354 / M;           // 15m/s 에서 3.05m/s²
@@ -2664,7 +2666,7 @@ function initTeamUi() {
 // ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
   ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 스루패스, 스틱 세기가 걷기부터 스프린트까지 속도를 정합니다.'
-  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">Space</span> 패스 · <span class="keys">/</span> 스루패스 · <span class="keys">.</span> 선수전환<br>슛·패스는 누른 길이가 세기와 높이를 정합니다.';
+  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">오른쪽 Shift</span> 패스 · <span class="keys">/</span> 스루패스 · <span class="keys">.</span> 선수전환<br>슛·패스는 누른 길이가 세기와 높이를 정합니다.';
 
 function showTitle() {
   state = 'title';
