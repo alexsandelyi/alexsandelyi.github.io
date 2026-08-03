@@ -103,6 +103,14 @@
     position:absolute; border-radius:50%; pointer-events:auto; font-weight:700;
     border:2px solid var(--accent); background:rgba(245,138,94,.2); color:var(--accent);
     padding:0; white-space:nowrap;      /* 기본 padding 때문에 '패스'가 두 줄로 깨졌다 */
+    overflow:hidden; isolation:isolate;
+  }
+  /* 충전 게이지. 버튼을 늘리지 않고 지금 얼마나 뜰지 보여준다.
+     --charge 0~1 을 아래에서 위로 채운다. 글자는 z-index 로 위에 남긴다. */
+  .actbtn::after {
+    content:''; position:absolute; left:0; right:0; bottom:0; z-index:-1;
+    height:calc(var(--charge, 0) * 100%);
+    background:currentColor; opacity:.42;
   }
   #shoot { right:18px; bottom:18px; width:82px; height:82px; font-size:15px; }
   #pass  { right:106px; bottom:40px; width:66px; height:66px; font-size:13px;
@@ -318,23 +326,37 @@ addEventListener('keydown', e => {
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight',
        'ControlLeft','ControlRight','Enter','KeyQ','KeyO'].includes(e.code)) e.preventDefault();
   if (e.code === 'Space') beginAction(0);
-  if (e.code === 'ShiftLeft') act(0, 'pass');
-  if (e.code === 'ControlLeft') act(0, 'through');
   if (e.code === 'KeyQ') act(0, 'switch');
   if (e.code === 'Enter') beginAction(1);
-  if (e.code === 'ShiftRight') act(1, 'pass');
-  if (e.code === 'ControlRight') act(1, 'through');
   if (e.code === 'KeyO') act(1, 'switch');
+  // 패스·스루는 뗄 때 발사한다. 누른 길이가 그대로 킥 높이가 된다.
+  if (PASS_KEYS[e.code]) holdStart[e.code] = performance.now();
 });
 addEventListener('keyup', e => {
   keys[e.code] = false;
   if (e.code === 'Space') endAction(0);
   if (e.code === 'Enter') endAction(1);
+  const pk = PASS_KEYS[e.code];
+  if (pk && holdStart[e.code]) {
+    act(pk[0], pk[1], holdPower(holdStart[e.code]));
+    holdStart[e.code] = 0;
+  }
 });
 addEventListener('blur', () => {
   for (const k in keys) keys[k] = false;
+  for (const k in holdStart) holdStart[k] = 0;
   endAction(0); endAction(1);
 });
+
+// 킥 충전 시간. shootCharge 와 같은 1.05초를 쓴다.
+const KICK_CHARGE_MS = 1050;
+const PASS_KEYS = {
+  ShiftLeft:[0, 'pass'], ControlLeft:[0, 'through'],
+  ShiftRight:[1, 'pass'], ControlRight:[1, 'through']
+};
+const holdStart = Object.create(null);
+const holdPower = (t0) =>
+  Math.max(0, Math.min(1, (performance.now() - t0) / KICK_CHARGE_MS));
 
 const touchLayer = document.getElementById('touch');
 const stickEl = document.getElementById('stick');
@@ -383,17 +405,22 @@ shootBtn.addEventListener('pointerup', e => {
 shootBtn.addEventListener('pointercancel', () => {
   shootBtn.classList.remove('held'); endAction(0);
 });
-let passHoldTimer = 0;
+let passHoldTimer = 0, passHeld = false;
 passBtn.addEventListener('pointerdown', e => {
   e.preventDefault(); passBtn.setPointerCapture(e.pointerId);
-  passBtn.classList.add('held'); passHoldTimer = performance.now();
+  passBtn.classList.add('held');
+  passHoldTimer = performance.now(); passHeld = true;
 });
 passBtn.addEventListener('pointerup', e => {
-  e.preventDefault(); passBtn.classList.remove('held');
+  e.preventDefault(); passBtn.classList.remove('held'); passHeld = false;
   const owned = ctrl[0] && ball.owner === ctrl[0];
-  act(0, owned ? (performance.now() - passHoldTimer >= 420 ? 'through' : 'pass') : 'switch');
+  const held = performance.now() - passHoldTimer;
+  act(0, owned ? (held >= 420 ? 'through' : 'pass') : 'switch',
+    Math.max(0, Math.min(1, held / KICK_CHARGE_MS)));
 });
-passBtn.addEventListener('pointercancel', () => passBtn.classList.remove('held'));
+passBtn.addEventListener('pointercancel', () => {
+  passBtn.classList.remove('held'); passHeld = false;
+});
 
 // ── 상태 ───────────────────────────────────────────────────────────
 let mode = '1p', state = 'title';
@@ -407,11 +434,13 @@ const matchStats = {
   shotGoals:[0,0], nonShotGoals:[0,0], blocks:[0,0],
   carryGoals:[0,0], looseGoals:[0,0],
   attackingLooseGoals:[0,0], ownGoals:[0,0],
-  fouls:[0,0], cards:[0,0], offsides:[0,0], setpieces:{}, events:[]
+  fouls:[0,0], cards:[0,0], offsides:[0,0], setpieces:{}, events:[],
+  headers:[0,0], headGoals:[0,0], deflections:[0,0], crosses:[0,0], gkClaims:[0,0]
 };
 const ball = {
   x:0, y:0, z:0, vx:0, vy:0, vz:0, owner:null, lastTouch:null, freeCd:0,
-  shotSide:-1, shotCounted:false, blockCounted:false, prevX:0, prevY:0
+  shotSide:-1, shotCounted:false, blockCounted:false, prevX:0, prevY:0,
+  headShot:false                     // 마지막 슛이 헤딩이었나 (headGoals 집계)
 };
 const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
 const attackDir = [1, -1];
@@ -588,8 +617,9 @@ function buildTeams() {
       reach:f.role === 'GK'
         ? R_PLAYER * GK_REACH_MUL * (.82 + stats.keeping / 99 * .30) : R_PLAYER,
       x:0, y:0, vx:0, vy:0,
-      kickCd:0, trapCd:0, tackleCd:0, tackleT:0, blockT:0,
+      kickCd:0, trapCd:0, tackleCd:0, tackleT:0, blockT:0, headCd:0,
       actShoot:0, actPass:0, actThrough:0, shootHeld:false, shootCharge:0,
+      kickPower:0, gkClaim:false,
       aimX:attackDir[side], aimY:0, manualAim:false, yellow:0,
       aiT:Math.random() * 0.3, aiTx:0, aiTy:0, gkDifficulty:LEVELS[1].gk
     };
@@ -607,9 +637,10 @@ function resetPositions(kickSide) {
   for (const side of [0, 1]) for (const p of teams[side]) {
     const h = homePos(p);
     p.x = h.x; p.y = h.y; p.vx = p.vy = 0;
-    p.kickCd = p.trapCd = p.tackleCd = p.tackleT = p.blockT = 0;
+    p.kickCd = p.trapCd = p.tackleCd = p.tackleT = p.blockT = p.headCd = 0;
     p.actShoot = p.actPass = p.actThrough = 0;
     p.shootHeld = false; p.shootCharge = 0;
+    p.kickPower = 0; p.gkClaim = false;
     // 킥오프: 공을 넣는 팀만 센터서클 안으로 한 명 들여보낸다
     if (p.role === 'FW' && p.no === 9 && side === kickSide) {
       p.x = FW / 2 - attackDir[side] * R_PLAYER * 2;
@@ -619,7 +650,7 @@ function resetPositions(kickSide) {
   ball.x = ball.prevX = FW / 2; ball.y = ball.prevY = FH / 2;
   ball.vx = ball.vy = 0; ball.z = 0; ball.vz = 0;
   ball.owner = ball.lastTouch = null; ball.freeCd = 0;
-  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false; offside = null;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false; offside = null;
   cam.x = FW / 2; cam.y = FH / 2;
   ctrl[0] = ctrl[1] = null;
   ctrlLock[0] = ctrlLock[1] = 0;
@@ -971,7 +1002,7 @@ function endAction(teamIdx) {
   p.shootCharge = 0;
 }
 
-function act(teamIdx, kind) {
+function act(teamIdx, kind, power = 0) {
   if (state === 'setpiece' && setpiece && setpiece.side === teamIdx) {
     takeSetpiece(kind); return;
   }
@@ -984,8 +1015,8 @@ function act(teamIdx, kind) {
       p.tackleT = 0.22; p.tackleCd = 0.85;
     }
   } else if (ball.owner === p) {
-    if (kind === 'pass') p.actPass = 0.25;
-    if (kind === 'through') p.actThrough = 0.25;
+    if (kind === 'pass') { p.actPass = 0.25; p.kickPower = power; }
+    if (kind === 'through') { p.actThrough = 0.25; p.kickPower = power; }
   }
 }
 
@@ -1004,9 +1035,17 @@ const BOUNCE_XY = 0.8;               // 바운스에서 잃는 수평 속도
 const AIR_FRICTION = 0.94;           // 초당 배율 (지면은 B_FRICTION)
 const GROUND_EPS = 1;                // 0.05m 이하는 지면으로 본다
 const BOUNCE_MIN_VZ = 12;            // 이보다 느리면 튀지 않고 붙는다
-// 높이별 접촉 한계. 헤딩 구간은 3단계에서 연다.
-const FOOT_H = 0.5 * M;              // 10 — 발로 다룰 수 있는 높이
+// 높이 구간 (aerial-play.md 「높이 구간」). 중간 구간을 비워두는 것이
+// 핵심이다 — 없으면 공중볼이 땅볼처럼 처리돼 z 를 넣은 의미가 사라진다.
+const FOOT_H = 0.5 * M;              // 10 — 트래핑·드리블·일반 킥·태클
+const CHEST_H = 1.5 * M;             // 30 — 여기까지는 몸에 튕기기만 한다
+const HEAD_H = 2.3 * M;              // 46 — 헤딩 상한
 const GK_HIGH_H = 2.6 * M;           // 52 — 골키퍼 점프·다이빙
+const HEAD_CD = 0.6;                 // 연속 헤딩 드리블 차단
+const HEAD_V = 300;                  // 15m/s — 헤딩은 발킥보다 느리다
+const HEAD_ERR = 0.30;               // 조준 오차(rad). 발보다 나쁘다
+const GK_CLEAR_V = 560;              // 28m/s — 골키퍼 펀트. B_MAX 안이다
+const GK_CLEAR_DIST = 45 * M;        // 펀트 목표 낙하 거리
 // 그리기용 과장값(실측 아님). 톱다운에서 높이를 읽으려면 필요하다.
 const BALL_LIFT = 0.5;               // z 1단위당 화면 위로 0.5단위
 const BALL_GROW = 200, BALL_GROW_MAX = 1.8;
@@ -1044,6 +1083,7 @@ function movePlayer(p, ax, ay, dt, maxSpeed = P_MAX) {
   if (p.tackleCd > 0) p.tackleCd -= dt;
   if (p.tackleT > 0) p.tackleT -= dt;
   if (p.blockT > 0) p.blockT -= dt;
+  if (p.headCd > 0) p.headCd -= dt;
   if (p.actShoot > 0) p.actShoot -= dt;
   if (p.actPass > 0) p.actPass -= dt;
   if (p.actThrough > 0) p.actThrough -= dt;
@@ -1157,7 +1197,7 @@ function updateBall(dt) {
     const crossedGoal = attackDir[p.side] === 1 ? ball.x >= FW : ball.x <= 0;
     if (crossedGoal && inGoalMouth(ball.y)) {
       matchStats.shots[p.side]++;
-      ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = false;
+      ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
     }
     return;
   }
@@ -1187,11 +1227,12 @@ function updateBall(dt) {
 
 function takePossession(p) {
   if (p.trapCd > 0 || ball.freeCd > 0) return false;
+  if (ball.z > FOOT_H) return false;              // 낮은 공만 트래핑한다
   if (callOffside(p)) return true;
   // 후보가 아닌 선수에게 패스가 정상 도달하면 이전 후보는 더는 유효하지 않다.
   if (offside) offside = null;
   ball.owner = p; ball.lastTouch = p;
-  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
   ball.z = 0; ball.vz = 0;
   ball.vx = p.vx; ball.vy = p.vy;
   return true;
@@ -1199,7 +1240,7 @@ function takePossession(p) {
 
 function releaseBall(p, vx, vy, vz = 0) {
   ball.owner = null; ball.lastTouch = p; ball.freeCd = 0.08;
-  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
   p.trapCd = REOWN_CD; p.kickCd = Math.max(p.kickCd, 0.22);
   const sp = Math.hypot(vx, vy);
   ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
@@ -1219,7 +1260,7 @@ function beginSetpiece(type, side, spot) {
   if (type === 'corner') matchStats.corners[side]++;
   ball.owner = null; ball.vx = ball.vy = 0; ball.freeCd = 0.1;
   ball.z = 0; ball.vz = 0;
-  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
   ball.x = Math.max(0, Math.min(FW, spot.x));
   ball.y = Math.max(0, Math.min(FH, spot.y));
   ball.prevX = ball.x; ball.prevY = ball.y;
@@ -1269,6 +1310,31 @@ function beginSetpiece(type, side, spot) {
 function loftFor(dist, v, maxT = 2.6) {
   if (v <= 0) return 0;
   return GRAVITY * Math.min(maxT, dist / v) / 2;
+}
+
+// 슛의 로프트. 잘 뜨면 크로스바 위로 다 날아가 득점이 사라지므로
+// 골문에 닿는 시점의 높이를 크로스바 아래로 역산해서 정한다.
+function shotLift(dist, v, power) {
+  const lp = Math.max(0, (power - 0.4) / 0.6);   // 짧게 누르면 땅볼
+  if (v <= 0 || lp <= 0) return 0;
+  const t = dist / v;
+  // 정점도 크로스바를 넘지 않게 잘라 먼 거리 슛이 부풀지 않게 한다.
+  return Math.min((CROSSBAR * 0.72 * lp + GRAVITY * t * t / 2) / t,
+    Math.sqrt(2 * GRAVITY * CROSSBAR));
+}
+
+// 공중볼 낙하 지점. z(t)=0 의 해석해를 쓰고 수평은 등속으로 근사한다.
+// 수치 적분을 돌리지 않으려는 것이다 (aerial-play.md 「AI 판단」).
+function ballLanding() {
+  if (ball.owner || ball.z <= 0) return { x:ball.x, y:ball.y, t:0 };
+  const t = (ball.vz + Math.sqrt(ball.vz * ball.vz + 2 * GRAVITY * ball.z)) / GRAVITY;
+  return { x:ball.x + ball.vx * t, y:ball.y + ball.vy * t, t };
+}
+
+// 각도 보간. ±π 경계를 넘어가도 짧은 쪽으로 돈다.
+function angLerp(a, b, t) {
+  const d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  return a + d * t;
 }
 
 function takeSetpiece(kind = 'pass') {
@@ -1393,8 +1459,12 @@ function passTarget(p, through = false) {
 
 function kickOwned(p, kind, power = 0.65) {
   if (ball.owner !== p || p.kickCd > 0) return false;
-  let tx, ty, v;
+  let tx, ty, v, lift = 0;
   const aimMag = Math.hypot(p.aimX, p.aimY);
+  const dir = attackDir[p.side];
+  // 누른 시간이 그대로 높이다 (aerial-play.md 「킥 높이 제어」).
+  // 0.4 이하는 땅볼로 둬서 짧게 누르면 예전과 같게 나간다.
+  const lp = Math.max(0, (power - 0.4) / 0.6);
   if (kind === 'shoot') {
     matchStats.shots[p.side]++;
     if (p.manualAim && aimMag > 0.2) {
@@ -1404,6 +1474,8 @@ function kickOwned(p, kind, power = 0.65) {
     }
     v = SHOOT_V * p.shotMul * (0.62 + 0.38 * power) *
       (mode === '1p' && p === ctrl[0] ? 1 + HUMAN_ASSIST[level] * 0.8 : 1);
+    // 골라인까지의 거리로 역산해 크로스바 아래에 머물게 한다.
+    lift = shotLift(Math.max(120, dir === 1 ? FW - p.x : p.x), v, power);
   } else {
     const through = kind === 'through';
     const t = passTarget(p, through);
@@ -1415,9 +1487,23 @@ function kickOwned(p, kind, power = 0.65) {
       const d = Math.hypot(tx - p.x, ty - p.y);
       v = Math.min(PASS_V * p.passMul * (through ? 1.12 : 1),
         420 + d * p.passMul * (through ? 1.0 : 0.9));
+      // 측면 깊은 위치에서 중앙으로 보내면 크로스다. 체공을 길게 줘서
+      // 받는 선수가 낙하 지점까지 따라갈 수 있게 한다.
+      const cross = Math.min(p.y, FH - p.y) < FH * 0.24 &&
+        (dir === 1 ? p.x : FW - p.x) > FW * 0.58 &&
+        Math.abs(t.y - FH / 2) < FH * 0.30;
+      if (cross) {
+        matchStats.crosses[p.side]++;
+        lift = loftFor(d, v, 1.6);
+      } else if (through && lp > 0.5) {
+        v *= 0.7; lift = loftFor(d, v, 2.0);        // 칩 — 수비선 뒤로
+      } else if (lp > 0) {
+        v *= 0.9; lift = loftFor(d, v, 1.1) * lp;   // 로빙 패스
+      }
     } else if (aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 800; ty = p.y + p.aimY / aimMag * 800;
       v = PASS_V * p.passMul * (through ? 0.95 : 0.8);
+      if (lp > 0) { v *= 0.9; lift = loftFor(800, v, 1.1) * lp; }
     } else {
       const a = aimAt(p.side); tx = a.x; ty = a.y; v = PASS_V * 0.8;
     }
@@ -1425,7 +1511,7 @@ function kickOwned(p, kind, power = 0.65) {
   if (kind === 'pass' || kind === 'through') markOffside(p);
   const ang = Math.atan2(ty - p.y, tx - p.x);
   const vx = Math.cos(ang) * v, vy = Math.sin(ang) * v;
-  releaseBall(p, vx, vy);
+  releaseBall(p, vx, vy, lift);
   if (kind === 'shoot') ball.shotSide = p.side;
   else if (goalBoundKick(p.side, p.x, p.y, vx, vy)) {
     matchStats.shots[p.side]++;
@@ -1452,10 +1538,58 @@ function ballContactPoint(p) {
   return { x, y };
 }
 
+// 무릎~가슴(0.5~1.5m). 아무도 제대로 다루지 못하고 몸에 튕긴다.
+function deflectBall(p, nx, ny) {
+  matchStats.deflections[p.side]++;
+  const carry = Math.max(0, p.vx * nx + p.vy * ny);
+  const v = TOUCH_V * 0.8 + carry * 0.35;
+  let vx = ball.vx * 0.35 + nx * v, vy = ball.vy * 0.35 + ny * v;
+  const sp = Math.hypot(vx, vy);
+  if (sp > B_MAX) { vx = vx / sp * B_MAX; vy = vy / sp * B_MAX; }
+  ball.vx = vx; ball.vy = vy;
+  ball.vz = Math.abs(ball.vz) * 0.35 + 30;      // 몸에 맞고 살짝 뜬다
+  ball.freeCd = Math.max(ball.freeCd, 0.06);
+  p.trapCd = Math.max(p.trapCd, 0.18);
+}
+
+// 헤딩(1.5~2.3m). 발로 닿을 수 없는 높이를 처리하는 유일한 수단이다.
+// 소유로 전환하지 않는 것이 헤딩 드리블을 막는 장치다.
+function headBall(p, nx, ny) {
+  if (p.headCd > 0) return;
+  p.headCd = HEAD_CD;
+  matchStats.headers[p.side]++;
+  const dir = attackDir[p.side];
+  const attacking = (dir === 1 ? FW - p.x : p.x) < FW * 0.32;
+  let ang, v, lift;
+  if (attacking) {
+    const a = aimAt(p.side);
+    ang = Math.atan2(a.y - p.y, a.x - p.x);
+    v = HEAD_V; lift = 18;
+    matchStats.shots[p.side]++;
+    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
+    ball.headShot = true;
+  } else {
+    // 수비·중원 헤딩은 걷어내기 — 멀리 그리고 높이.
+    ang = Math.atan2((FH / 2 - p.y) * 0.35 + (Math.random() * 2 - 1) * 260, dir * 800);
+    v = HEAD_V * 1.15; lift = 120;
+    ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
+  }
+  if (p.manualAim) ang = angLerp(ang, Math.atan2(p.aimY, p.aimX), 0.6);
+  // 발보다 정확도가 나쁘다. 공격은 shot, 수비는 defense 로 오차를 줄인다.
+  const skill = (attacking ? p.stats.shot : p.stats.defense) / 99;
+  ang += (Math.random() * 2 - 1) * HEAD_ERR * (1 - skill * 0.55);
+  ball.vx = Math.cos(ang) * v; ball.vy = Math.sin(ang) * v;
+  ball.vz = lift;
+  ball.freeCd = Math.max(ball.freeCd, 0.12);
+  p.trapCd = Math.max(p.trapCd, HEAD_CD);
+}
+
 function collide(p) {
-  // 높이 게이트. 발이 닿지 않는 공은 아예 건드리지 못한다.
-  // 헤딩 구간(1.5~2.3m)은 3단계에서 연다.
-  if (ball.z > (p.isGK ? GK_HIGH_H : FOOT_H)) return;
+  // 높이 게이트. 헤딩 구간 위는 골키퍼만 닿는다. 헤딩 쿨다운 중이면
+  // 헤딩 구간에 아예 닿지 못한다 — 안 그러면 공만 밀어내며 lastTouch 를
+  // 계속 가져간다.
+  const reachH = p.isGK ? GK_HIGH_H : p.headCd > 0 ? CHEST_H : HEAD_H;
+  if (ball.z > reachH) return;
   const contact = ballContactPoint(p);
   const dx = contact.x - p.x, dy = contact.y - p.y;
   const gkAssist = p.isGK && p.side === 0 && mode === '1p'
@@ -1498,25 +1632,35 @@ function collide(p) {
     if (ball.shotSide === 1 - p.side && !ball.shotCounted) {
       matchStats.onTarget[ball.shotSide]++; ball.shotCounted = true;
     }
-    ball.shotSide = -1; ball.shotCounted = ball.blockCounted = false;
+    if (p.gkClaim) { matchStats.gkClaims[p.side]++; p.gkClaim = false; }
+    ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
     p.kickCd = 0.35;
     const dir = attackDir[p.side];
     const ang = Math.atan2((FH / 2 - p.y) * 0.6 + (Math.random() * 2 - 1) * 300, dir * 900);
-    ball.vx = Math.cos(ang) * 1150;
-    ball.vy = Math.sin(ang) * 1150;
+    // 잡은 공을 손에서 놓고 펀트한다. 전에는 1150(207km/h)으로 슛보다
+    // 빨랐고 B_MAX 클램프도 우회했다.
+    ball.vx = Math.cos(ang) * GK_CLEAR_V;
+    ball.vy = Math.sin(ang) * GK_CLEAR_V;
+    ball.z = 0;
+    ball.vz = loftFor(GK_CLEAR_DIST, GK_CLEAR_V, 1.8);
     return;
   }
 
-  let vx, vy, deliberateKick = false;
   if (ball.shotSide === 1 - p.side) {
     if (!ball.blockCounted) matchStats.blocks[p.side]++;
     ball.blockCounted = true;
   }
+
+  // 높이 구간별 경합. 발 구간에서만 트래핑·드리블·의도한 킥이 나온다.
+  if (ball.z > CHEST_H) { headBall(p, nx, ny); return; }
+  if (ball.z > FOOT_H) { deflectBall(p, nx, ny); return; }
+
+  let vx, vy, deliberateKick = false;
   if (p.actShoot > 0 && p.kickCd <= 0) {
     deliberateKick = true;
     p.actShoot = 0; p.kickCd = 0.3;
     matchStats.shots[p.side]++;
-    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = false;
+    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
     const a = aimAt(p.side);
       const ang = Math.atan2(a.y - p.y, a.x - p.x);
       vx = Math.cos(ang) * SHOOT_V * p.shotMul; vy = Math.sin(ang) * SHOOT_V * p.shotMul;
@@ -1557,7 +1701,7 @@ function collide(p) {
   if (deliberateKick && ball.shotSide < 0 &&
       goalBoundKick(p.side, ball.x, ball.y, vx, vy)) {
     matchStats.shots[p.side]++;
-    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = false;
+    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
   }
   const sp = Math.hypot(vx, vy);
   ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
@@ -1637,6 +1781,7 @@ function goal(side) {
       matchStats[ownGoal ? 'ownGoals' : 'attackingLooseGoals'][side]++;
     }
   }
+  if (ball.headShot && ball.shotSide === side) matchStats.headGoals[side]++;
   score[side]++; lastScorer = side;
   ball.owner = null; setpiece = null;
   state = 'goal'; goalTimer = GOAL_PAUSE;
@@ -1784,6 +1929,22 @@ function defensiveTarget(p, fallback, isChaser) {
 function gkTarget(p) {
   const dir = attackDir[p.side];
   const gx = dir === 1 ? 0 : FW;
+
+  // 크로스가 들어오면 나와서 잡는다. 항상 나오면 골문이 비고 안 나오면
+  // 크로스가 무적이 되므로, 낙하 지점까지 제때 갈 수 있을 때만 나간다.
+  // keeping 이 판단 거리를 늘려서 결정이 양극단으로 굳지 않게 한다.
+  p.gkClaim = false;
+  if (ball.z > FOOT_H && !ball.owner) {
+    const land = ballLanding();
+    if (land.t > 0.25 && inPenaltyArea(p.side, land.x, land.y)) {
+      const reach = SPEED_RUN * land.t * (0.70 + p.stats.keeping / 99 * 0.50);
+      if (Math.hypot(land.x - p.x, land.y - p.y) < reach) {
+        p.gkClaim = true;
+        return { x:land.x, y:land.y, claim:true };
+      }
+    }
+  }
+
   // 골라인에서 조금 나와 공과 골문 중심을 잇는 선 위에 선다
   const t = Math.max(0, Math.min(1, 1 - Math.abs(ball.x - gx) / (FW * 0.35)));
   const out = 40 + t * (PA_D * 0.55);
@@ -1791,7 +1952,8 @@ function gkTarget(p) {
   const ty = FH / 2 + (ball.y - FH / 2) * keeping;
   return {
     x:gx + dir * out,
-    y:Math.max((FH - GOAL_H) / 2 - 30, Math.min((FH + GOAL_H) / 2 + 30, ty))
+    y:Math.max((FH - GOAL_H) / 2 - 30, Math.min((FH + GOAL_H) / 2 + 30, ty)),
+    claim:false
   };
 }
 
@@ -1803,18 +1965,23 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
     let t;
     if (p.isGK) {
       t = gkTarget(p);
-      // 골키퍼 반응은 별도 계수 — 난이도가 낮으면 늦게 붙는다
-      t.y = FH / 2 + (t.y - FH / 2) * Math.min(1, L.gk);
-      t.y = Math.max((FH - GOAL_H) / 2 - 30,
-        Math.min((FH + GOAL_H) / 2 + 30, t.y));
+      // 하이볼을 잡으러 나가는 중이면 골문 폭 제한을 걸지 않는다.
+      if (!t.claim) {
+        // 골키퍼 반응은 별도 계수 — 난이도가 낮으면 늦게 붙는다
+        t.y = FH / 2 + (t.y - FH / 2) * Math.min(1, L.gk);
+        t.y = Math.max((FH - GOAL_H) / 2 - 30,
+          Math.min((FH + GOAL_H) / 2 + 30, t.y));
+      }
     } else if (ball.owner === p) {
       const dir = attackDir[p.side];
       t = { x:p.x + dir * 320, y:p.y + (FH / 2 - p.y) * 0.16 };
     } else if (isChaser) {
       const dir = attackDir[p.side];
+      // 공중볼은 지금 위치가 아니라 낙하 지점으로 간다.
+      const aim = ball.z > FOOT_H ? ballLanding() : ball;
       t = {
-        x:ball.x - dir * (R_PLAYER + R_BALL + 4),
-        y:ball.y + (Math.random() * 2 - 1) * L.aimErr
+        x:aim.x - dir * (R_PLAYER + R_BALL + 4),
+        y:aim.y + (Math.random() * 2 - 1) * L.aimErr
       };
     } else {
       const slot = slotTarget(p, offsideLine);
@@ -1836,7 +2003,8 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
 
   let targetSpeed = SPEED_WALK;
   if (p.isGK) {
-    targetSpeed = d > 120 ? SPEED_JOG : SPEED_WALK;
+    // 하이볼을 잡으러 나갈 때만 전력으로 뛴다.
+    targetSpeed = p.gkClaim ? SPEED_SPRINT : d > 120 ? SPEED_JOG : SPEED_WALK;
   } else if (ball.owner === p) {
     targetSpeed = SPEED_RUN;
   } else if (isChaser) {
@@ -1860,14 +2028,20 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
     const toGoal = dir === 1 ? FW - p.x : p.x;
     const exploitHighLine = teamTactics(p.side).width > .38 &&
       teamTactics(1 - p.side).line > .65;
+    // 측면 깊은 위치면 크로스를 우선 검토한다. kickOwned 가 같은 조건에서
+    // 체공을 붙이므로 여기서는 패스를 고르기만 하면 된다.
+    const crossSpot = Math.min(p.y, FH - p.y) < FH * 0.24 && toGoal < FW * 0.42;
     if (p.isGK) {
       // 처리는 collide() 안에서 직접 한다 (잡아서 걷어내기)
-    } else if (toGoal < FW * 0.39 && Math.random() < AI_ACTION_RATE) {
-      p.actShoot = 0.65;                                      // 골문 근처면 슛
+    } else if (toGoal < FW * 0.39 && !crossSpot && Math.random() < AI_ACTION_RATE) {
+      p.actShoot = 0.65; p.kickPower = 0.65;                  // 골문 근처면 슛
+    } else if (crossSpot && Math.random() < AI_ACTION_RATE * .9) {
+      p.actPass = 0.15; p.kickPower = 1;                      // 측면에서 크로스
     } else if (exploitHighLine && Math.random() < AI_ACTION_RATE * .8) {
-      p.actThrough = 0.15;                                    // 높은 선 뒤 측면 침투
+      // 수비선이 높고 배후가 비면 칩으로 넘긴다.
+      p.actThrough = 0.15; p.kickPower = 0.85;
     } else if (Math.random() < AI_ACTION_RATE * 0.8) {
-      p.actPass = 0.15;                                       // 아니면 전진 패스
+      p.actPass = 0.15; p.kickPower = 0.2;                    // 아니면 땅볼 패스
     }
   }
   return { ax, ay, targetSpeed };
@@ -1928,9 +2102,18 @@ function cycleControlled(teamIdx) {
 }
 
 function syncTouchActions() {
-  const owned = ctrl[0] && ball.owner === ctrl[0];
+  const p = ctrl[0];
+  const owned = p && ball.owner === p;
   shootBtn.textContent = owned ? '슛' : '태클';
   passBtn.textContent = owned ? '패스' : '전환';
+  // 충전 게이지로 지금 얼마나 뜰지 보이게 한다. 소유 중에만 의미가 있다.
+  setCharge(shootBtn, owned && p.shootHeld ? p.shootCharge : 0);
+  setCharge(passBtn, owned && passHeld
+    ? Math.min(1, (performance.now() - passHoldTimer) / KICK_CHARGE_MS) : 0);
+}
+
+function setCharge(btn, v) {
+  btn.style.setProperty('--charge', v.toFixed(3));
 }
 
 // ── 루프 ───────────────────────────────────────────────────────────
@@ -2040,8 +2223,8 @@ function step(dt) {
   if (ball.owner) {
     const p = ball.owner;
     if (p.actShoot > 0) kickOwned(p, 'shoot', p.actShoot);
-    else if (p.actThrough > 0) kickOwned(p, 'through');
-    else if (p.actPass > 0) kickOwned(p, 'pass');
+    else if (p.actThrough > 0) kickOwned(p, 'through', p.kickPower);
+    else if (p.actPass > 0) kickOwned(p, 'pass', p.kickPower);
   }
   updateBall(dt);
   if (state !== 'play') return;                        // 소유한 채 득점한 경우 중단

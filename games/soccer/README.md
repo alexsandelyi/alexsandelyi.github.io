@@ -22,6 +22,7 @@
 | [movement-metrics.md](movement-metrics.md) | 이동 계측 정의. 표본 범위·속도 구간·전후반 비교 |
 | [ball-height.md](ball-height.md) | 공의 `z` 축 물리와 표현. 중력·바운스·원근·크로스바 |
 | [aerial-play.md](aerial-play.md) | 공중 플레이. 킥 높이 제어, 높이별 경합, 헤딩, GK 하이볼 |
+| [aerial-balance.md](aerial-balance.md) | 공중 플레이가 승률·득점을 얼마나 움직였는지 측정 기록 |
 | [roadmap.md](roadmap.md) | 구현 순서, 단계별 완료 기준, 미결 질문 |
 
 ## 읽는 순서
