@@ -325,10 +325,12 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true;
   // Space 는 이제 안 쓰지만 페이지 스크롤을 막으려고 기본 동작만 끈다.
-  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftRight',
-       'Enter','Slash','Quote','Semicolon','Period'].includes(e.code)) e.preventDefault();
+  // Shift 는 쓰지 않는다 — Windows 고정 키가 5회 연타를 가로채 창을 띄운다.
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',
+       'Backslash','BracketRight','BracketLeft','Quote','Semicolon'].includes(e.code))
+    e.preventDefault();
   if (e.code === 'Enter') beginAction(0);          // 슛 (공이 없으면 태클)
-  if (e.code === 'Period') act(0, 'switch');
+  if (e.code === 'BracketLeft') act(0, 'switch');
   // 패스·스루는 뗄 때 발사한다. 누른 길이가 그대로 킥 높이가 된다.
   if (PASS_KEYS[e.code]) holdStart[e.code] = performance.now();
 });
@@ -349,7 +351,7 @@ addEventListener('blur', () => {
 
 // 킥 충전 시간. shootCharge 와 같은 1.05초를 쓴다.
 const KICK_CHARGE_MS = 1050;
-const PASS_KEYS = { ShiftRight:[0, 'pass'], Slash:[0, 'through'] };
+const PASS_KEYS = { Backslash:[0, 'pass'], BracketRight:[0, 'through'] };
 const holdStart = Object.create(null);
 const holdPower = (t0) =>
   Math.max(0, Math.min(1, (performance.now() - t0) / KICK_CHARGE_MS));
@@ -2666,7 +2668,7 @@ function initTeamUi() {
 // ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
   ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 스루패스, 스틱 세기가 걷기부터 스프린트까지 속도를 정합니다.'
-  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">오른쪽 Shift</span> 패스 · <span class="keys">/</span> 스루패스 · <span class="keys">.</span> 선수전환<br>슛·패스는 누른 길이가 세기와 높이를 정합니다.';
+  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">\</span> 패스 · <span class="keys">]</span> 스루패스 · <span class="keys">[</span> 선수전환<br>슛·패스는 누른 길이가 세기와 높이를 정합니다.';
 
 function showTitle() {
   state = 'title';
