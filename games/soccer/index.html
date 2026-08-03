@@ -171,7 +171,7 @@
     </details>
     <div class="btnrow" id="quickRow">
       <button id="btn1p">AI와 대전</button>
-      <button id="btn2p" class="ghost">2인 대전</button>
+      <button id="btnHome" class="ghost" hidden>처음으로</button>
       <button id="btnPractice" class="ghost">연습 모드</button>
     </div>
     <div class="btnrow" id="modeRow">
@@ -324,19 +324,16 @@ const keys = Object.create(null);
 addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true;
-  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight',
-       'ControlLeft','ControlRight','Enter','KeyQ','KeyO'].includes(e.code)) e.preventDefault();
-  if (e.code === 'Space') beginAction(0);
-  if (e.code === 'KeyQ') act(0, 'switch');
-  if (e.code === 'Enter') beginAction(1);
-  if (e.code === 'KeyO') act(1, 'switch');
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+       'Enter','Slash','Quote','Semicolon','Period'].includes(e.code)) e.preventDefault();
+  if (e.code === 'Enter') beginAction(0);          // 슛 (공이 없으면 태클)
+  if (e.code === 'Period') act(0, 'switch');
   // 패스·스루는 뗄 때 발사한다. 누른 길이가 그대로 킥 높이가 된다.
   if (PASS_KEYS[e.code]) holdStart[e.code] = performance.now();
 });
 addEventListener('keyup', e => {
   keys[e.code] = false;
-  if (e.code === 'Space') endAction(0);
-  if (e.code === 'Enter') endAction(1);
+  if (e.code === 'Enter') endAction(0);
   const pk = PASS_KEYS[e.code];
   if (pk && holdStart[e.code]) {
     act(pk[0], pk[1], holdPower(holdStart[e.code]));
@@ -346,15 +343,12 @@ addEventListener('keyup', e => {
 addEventListener('blur', () => {
   for (const k in keys) keys[k] = false;
   for (const k in holdStart) holdStart[k] = 0;
-  endAction(0); endAction(1);
+  endAction(0);
 });
 
 // 킥 충전 시간. shootCharge 와 같은 1.05초를 쓴다.
 const KICK_CHARGE_MS = 1050;
-const PASS_KEYS = {
-  ShiftLeft:[0, 'pass'], ControlLeft:[0, 'through'],
-  ShiftRight:[1, 'pass'], ControlRight:[1, 'through']
-};
+const PASS_KEYS = { Space:[0, 'pass'], Slash:[0, 'through'] };
 const holdStart = Object.create(null);
 const holdPower = (t0) =>
   Math.max(0, Math.min(1, (performance.now() - t0) / KICK_CHARGE_MS));
@@ -445,7 +439,7 @@ const ball = {
 };
 const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
 const attackDir = [1, -1];
-const ctrl = [null, null];           // 사람이 조작 중인 선수 (1P, 2P)
+const ctrl = [null, null];           // 사람이 조작 중인 선수 (1P 만 사용)
 const ctrlLock = [0, 0];
 
 // 자기 골문(x=0) 기준 정규화 좌표.
@@ -1418,7 +1412,7 @@ function stepSetpiece(dt) {
     setpiece.timer -= dt;
     return;
   }
-  const human = setpiece.side === 0 || (setpiece.side === 1 && mode === '2p');
+  const human = setpiece.side === 0;
   if (!human) { takeSetpiece('pass'); return; }
   setpiece.ready = true;
   setpiece.auto -= dt;
@@ -2072,23 +2066,14 @@ function aiPlayer(p, dt, L, isChaser, offsideLine = null) {
 function readHuman(i) {
   let sx = 0, sy = 0;
   let keyboard = false;
-  if (i === 0) {
-    if (keys.KeyA || keys.ArrowLeft) { sx -= 1; keyboard = true; }
-    if (keys.KeyD || keys.ArrowRight) { sx += 1; keyboard = true; }
-    if (keys.KeyW || keys.ArrowUp) { sy -= 1; keyboard = true; }
-    if (keys.KeyS || keys.ArrowDown) { sy += 1; keyboard = true; }
-    if (stick.active) { sx += stick.dx; sy += stick.dy; }
-  } else {
-    if (keys.KeyJ) { sx -= 1; keyboard = true; }
-    if (keys.KeyL) { sx += 1; keyboard = true; }
-    if (keys.KeyI) { sy -= 1; keyboard = true; }
-    if (keys.KeyK) { sy += 1; keyboard = true; }
-  }
+  if (keys.KeyA || keys.ArrowLeft) { sx -= 1; keyboard = true; }
+  if (keys.KeyD || keys.ArrowRight) { sx += 1; keyboard = true; }
+  if (keys.KeyW || keys.ArrowUp) { sy -= 1; keyboard = true; }
+  if (keys.KeyS || keys.ArrowDown) { sy += 1; keyboard = true; }
+  if (stick.active) { sx += stick.dx; sy += stick.dy; }
   // 화면 위로 밀면 상대 골문(필드 +x) 쪽. 회전 시 입력도 같이 돌려야 한다.
-  const sprint = i === 0
-    ? !!keys.KeyE
-    : !!keys.KeyU;
-  const walking = i === 0 ? !!keys.KeyR : !!keys.KeyP;
+  const sprint = !!keys.Semicolon;
+  const walking = !!keys.Quote;
   const inputMag = Math.min(1, Math.hypot(sx, sy));
   const base = view.rot ? { ax:-sy, ay:sx } : { ax:sx, ay:sy };
   const v = { ax:base.ax * attackDir[i], ay:base.ay * attackDir[i] };
@@ -2201,7 +2186,6 @@ function step(dt) {
   ctrlLock[0] = Math.max(0, ctrlLock[0] - dt);
   ctrlLock[1] = Math.max(0, ctrlLock[1] - dt);
   pickControlled(0);
-  if (mode === '2p') pickControlled(1);
 
   const chaser = [
     new Set(nearestChasers(0, null)),
@@ -2211,7 +2195,7 @@ function step(dt) {
     ? [secondLastDefenderLine(0), secondLastDefenderLine(1)] : [null, null];
 
   for (const side of [0, 1]) {
-    const human = (side === 0) || (side === 1 && mode === '2p');
+    const human = side === 0;
     const inp = human ? readHuman(side) : null;
     for (const p of teams[side]) {
       if (human && p === ctrl[side]) {
@@ -2276,9 +2260,10 @@ function endMatch() {
   const win = score[0] > score[1] ? '승리' : score[0] < score[1] ? '패배' : '무승부';
   ov.querySelector('h1').textContent = `${win}  ${score[0]} : ${score[1]}`;
   document.getElementById('howto').innerHTML = mode === '1p'
-    ? `${LEVELS[level].name} 난이도 경기가 끝났습니다.` : '2인 대전이 끝났습니다.';
+    ? `${LEVELS[level].name} 난이도 경기가 끝났습니다.` : '경기가 끝났습니다.';
   document.getElementById('btn1p').textContent = '다시 하기';
-  document.getElementById('btn2p').textContent = '처음으로';
+  const home = document.getElementById('btnHome');
+  home.hidden = false; home.textContent = '처음으로';
   document.getElementById('levelRow').style.display = mode === '1p' ? '' : 'none';
   document.getElementById('lengthRow').style.display = '';
   document.getElementById('modeInfo').textContent = summary;
@@ -2370,7 +2355,7 @@ function drawRadius(physicalRadius, minDiameterPx) {
 }
 
 function drawPlayer(p) {
-  const isCtrl = p === ctrl[0] || (mode === '2p' && p === ctrl[1]);
+  const isCtrl = p === ctrl[0];
   const base = p.side === 0
     ? (p.isGK ? C.gkHome : C.home)
     : (p.isGK ? C.gkAway : C.away);
@@ -2468,7 +2453,7 @@ function drawMinimap() {
   for (const side of [0, 1]) for (const p of teams[side]) {
     ctx.fillStyle = p.side === 0 ? C.home : C.away;
     ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy, r, 0, Math.PI * 2); ctx.fill();
-    if (p === ctrl[0] || (mode === '2p' && p === ctrl[1])) {
+    if (p === ctrl[0]) {
       ctx.strokeStyle = '#F2F7F4'; ctx.lineWidth = 1.8 * view.dpr;
       ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy,
         r + 2.2 * view.dpr, 0, Math.PI * 2); ctx.stroke();
@@ -2679,7 +2664,7 @@ function initTeamUi() {
 // ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
   ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 스루패스, 스틱 세기가 걷기부터 스프린트까지 속도를 정합니다.'
-  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">R</span> 걷기 · <span class="keys">E</span> 스프린트 · <span class="keys">Space</span> 슛/태클 · <span class="keys">Shift</span> 패스 · <span class="keys">Ctrl</span> 스루패스 · <span class="keys">Q</span> 선수전환<br>2P: IJKL · P 걷기 · U 스프린트 · Enter · 오른쪽 Shift/Ctrl · O';
+  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">Space</span> 패스 · <span class="keys">/</span> 스루패스 · <span class="keys">.</span> 선수전환<br>슛·패스는 누른 길이가 세기와 높이를 정합니다.';
 
 function showTitle() {
   state = 'title';
@@ -2688,7 +2673,7 @@ function showTitle() {
   ov.querySelector('h1').textContent = '동네 축구';
   document.getElementById('howto').innerHTML = HOWTO;
   document.getElementById('btn1p').textContent = 'AI와 대전';
-  document.getElementById('btn2p').textContent = '2인 대전';
+  document.getElementById('btnHome').hidden = true;
   setConfigVisible(true);
   document.getElementById('modeInfo').textContent = '';
   resetModeButtons();
@@ -2708,9 +2693,7 @@ for (const b of document.querySelectorAll('.lvl'))
 for (const b of document.querySelectorAll('.len'))
   b.addEventListener('click', () => selectLength(+b.dataset.sec));
 document.getElementById('btn1p').addEventListener('click', () => startMatch('1p'));
-document.getElementById('btn2p').addEventListener('click', () => {
-  if (state === 'end') showTitle(); else startMatch('2p');
-});
+document.getElementById('btnHome').addEventListener('click', showTitle);
 document.getElementById('btnPractice').addEventListener('click', startPractice);
 document.getElementById('btnTournament').addEventListener('click', () => {
   if (!competition) startTournament();
