@@ -156,8 +156,18 @@ function makeSandbox(rand) {
   });
 
   const els = new Map();
+  // style 은 CSS 커스텀 속성(--charge)을 setProperty 로 쓴다. 빈 객체로 두면
+  // 브라우저에서만 돌고 시뮬레이터에서 죽는다.
+  const makeStyle = () => {
+    const s = {
+      setProperty(k, v) { s[k] = v; },
+      removeProperty(k) { delete s[k]; },
+      getPropertyValue(k) { return s[k] === undefined ? '' : String(s[k]); }
+    };
+    return s;
+  };
   const makeEl = () => ({
-    style: {}, dataset: {}, textContent: '', innerHTML: '', value: '',
+    style: makeStyle(), dataset: {}, textContent: '', innerHTML: '', value: '',
     // resize() 가 읽는 값. 가로 화면이라 경기장을 회전하지 않는다.
     clientWidth: 1280, clientHeight: 720, width: 1280, height: 720,
     classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
@@ -293,7 +303,12 @@ const HARNESS = `
           offsideChecks: [offsideChecks],
           offsideMarks: [offsideMarks],
           fouls: matchStats.fouls.slice(),
-          cards: matchStats.cards.slice()
+          cards: matchStats.cards.slice(),
+          headers: matchStats.headers.slice(),
+          headGoals: matchStats.headGoals.slice(),
+          deflections: matchStats.deflections.slice(),
+          crosses: matchStats.crosses.slice(),
+          gkClaims: matchStats.gkClaims.slice()
         }
       };
     },
@@ -535,16 +550,32 @@ const HARNESS = `
       var over = goalLineTest(CROSSBAR + 5), under = goalLineTest(CROSSBAR - 5);
       var crossbar = over.scored === 0 && over.type === 'goalkick' && under.scored === 1;
 
-      // 발이 닿지 않는 높이는 아무도 건드리지 못하고, 낮으면 잡는다.
-      startMatch('1p');
-      var kicker = teams[0][9];
-      kicker.x = FW / 2; kicker.y = FH / 2; kicker.vx = kicker.vy = 0; kicker.trapCd = 0;
-      launch(FOOT_H + 5, 0);
-      ball.x = kicker.x + 4; ball.y = kicker.y;
-      collide(kicker);
-      var heightGate = ball.owner === null;
-      ball.z = 0; ball.vz = 0; collide(kicker);
-      var footStillWorks = ball.owner === kicker;
+      // 높이 구간별 접촉. 매번 깨끗한 상태에서 한 번만 collide 시킨다 —
+      // 같은 선수로 연달아 부르면 앞 접촉이 남긴 trapCd 가 다음 판정을 막는다.
+      function bandTouch(z, useGK) {
+        startMatch('1p');
+        var q = useGK ? teams[0][0] : teams[0][9];
+        q.x = FW / 2; q.y = FH / 2; q.vx = q.vy = 0;
+        q.trapCd = q.headCd = q.kickCd = q.tackleT = q.blockT = 0;
+        ball.owner = null; ball.lastTouch = null; ball.freeCd = 0;
+        ball.x = q.x + 4; ball.y = q.y; ball.vx = ball.vy = 0;
+        ball.z = z; ball.vz = 0;
+        collide(q);
+        return { owned:ball.owner === q, touched:ball.lastTouch === q,
+                 speed:Math.hypot(ball.vx, ball.vy), headCd:q.headCd };
+      }
+      var footBand = bandTouch(FOOT_H, false);
+      var chestBand = bandTouch(CHEST_H, false);
+      var headBand = bandTouch(HEAD_H, false);
+      var aboveHead = bandTouch(HEAD_H + 1, false);
+      var gkHigh = bandTouch(HEAD_H + 1, true);
+
+      // 발은 잡고, 가슴은 튕기고, 헤딩은 헤딩하고, 그 위는 필드 선수가 못 닿는다.
+      var footTraps = footBand.owned;
+      var chestDeflects = !chestBand.owned && chestBand.touched && chestBand.speed > 0;
+      var headHeads = !headBand.owned && headBand.touched && headBand.headCd > 0;
+      var aboveHeadUntouched = !aboveHead.touched && aboveHead.speed === 0;
+      var gkReachesHigh = gkHigh.touched;
 
       var rounds = makeLeagueRounds(8), pairCounts = {};
       rounds.forEach(function (fixtures) {
@@ -603,7 +634,9 @@ const HARNESS = `
         physicalScale:physicalScale, straightSpeed:straightSpeed,
         ballHeightConstants:ballHeightConstants, parabola:parabola,
         bounceDecay:bounceDecay, airHoldsSpeed:airHoldsSpeed,
-        crossbar:crossbar, heightGate:heightGate, footStillWorks:footStillWorks,
+        crossbar:crossbar,
+        footTraps:footTraps, chestDeflects:chestDeflects, headHeads:headHeads,
+        aboveHeadUntouched:aboveHeadUntouched, gkReachesHigh:gkReachesHigh,
         movementPaces:movementPaces,
         collisionRadius:collisionRadius, separatedDrawScale:separatedDrawScale,
         cameraViewportStable:cameraViewportStable,
@@ -664,7 +697,8 @@ function runBatch(job) {
   const eventTotals = {
     shots:0, shotGoals:0, nonShotGoals:0, carryGoals:0, looseGoals:0,
     attackingLooseGoals:0, ownGoals:0, blocks:0,
-    offsides:0, offsideChecks:0, offsideMarks:0, fouls:0, cards:0
+    offsides:0, offsideChecks:0, offsideMarks:0, fouls:0, cards:0,
+    headers:0, headGoals:0, deflections:0, crosses:0, gkClaims:0
   };
   const movement = { count:0, sum:0, max:0, bins:[0,0,0,0], halfCount:[0,0], halfSum:[0,0] };
   let sampleEvents = [];
@@ -833,6 +867,21 @@ function printNormalResults(rows) {
       `${pct(s.shotGoals / Math.max(1, s.shots))}% ` +
       `${pct(s.nonShotGoals / Math.max(1, goals))}%  ` +
       `${(s.blocks / r.n).toFixed(2).padStart(7)}`
+    );
+  }
+
+  console.log('\n공중 플레이 (경기당, 양 팀 합계)');
+  console.log('난이도   헤딩  헤딩골   몸튕김   크로스  GK캐치  헤딩골/득점');
+  for (const r of rows) {
+    const s = r.eventTotals;
+    const goals = s.shotGoals + s.nonShotGoals;
+    console.log(
+      `${LEVEL_NAMES[r.lvl].padEnd(4)} ${(s.headers / r.n).toFixed(2).padStart(7)} ` +
+      `${(s.headGoals / r.n).toFixed(2).padStart(6)} ` +
+      `${(s.deflections / r.n).toFixed(2).padStart(8)} ` +
+      `${(s.crosses / r.n).toFixed(2).padStart(8)} ` +
+      `${(s.gkClaims / r.n).toFixed(2).padStart(7)} ` +
+      `${pct(s.headGoals / Math.max(1, goals))}%`
     );
   }
 
