@@ -17,7 +17,8 @@ const os = require('os');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const {
   GAME, TARGET_WIN, TARGET_GOALS, LEVEL_NAMES, SWEEP_SPEEDS, TACTIC_PRESETS,
-  mulberry32, readGameFiles, readGameSource, makeSandbox, createSimulation
+  mulberry32, readGameFiles, readGameSource, makeSandbox, createSimulation,
+  stampIsFresh, restamp
 } = require('./soccer-runtime.js');
 const {
   wilson, pct, combineRows, printNormalResults, printSweepResults
@@ -51,6 +52,7 @@ function parseArgs(argv) {
     else if (a === '--match-sec') o.matchSec = +next();
     else if (a === '--sweep-speed') o.sweepSpeed = true;
     else if (a === '--self-test') o.selfTest = true;
+    else if (a === '--restamp') o.restamp = true;
     else if (a === '-h' || a === '--help') o.help = true;
     else throw new Error(`알 수 없는 인자: ${a}`);
   }
@@ -97,6 +99,7 @@ const HELP = `동네 축구 밸런스 측정
       --sweep-speed    보통 1P 상대 속도 배수 0.84~0.94를 0.01 간격으로 측정
                        기본 경기 수는 속도값당 200 (-n으로 변경 가능)
       --self-test      오프사이드·파울 결정론 시나리오 검사
+      --restamp        js/ 를 고친 뒤 index.html 의 캐시 무효화 ?v= 갱신
   -h, --help           이 도움말
 `;
 
@@ -221,6 +224,7 @@ async function main() {
     return;
   }
   if (opt.help) { process.stdout.write(HELP); return; }
+  if (opt.restamp) { console.log('스탬프 갱신: ?v=' + restamp()); return; }
   if (opt.selfTest) {
     // 각 파일이 독립 스크립트라 'use strict' 도 파일마다 있어야 한다.
     // 주석·빈 줄은 지시어 프롤로그를 깨지 않으므로 건너뛰고 첫 문장을 본다.
@@ -233,6 +237,9 @@ async function main() {
     const result = createSimulation(opt.seed).selfTest();
     result.everyFileStrict = notStrict.length === 0;
     if (notStrict.length) result.notStrict = notStrict;
+    // js/ 를 고치고 index.html 의 ?v= 를 안 바꾸면 브라우저가 옛 파일을
+    // 계속 쓴다. 배포 뒤에는 옛 JS 와 새 JS 가 섞여 더 나쁘다.
+    result.versionStampFresh = stampIsFresh();
     const ok = Object.values(result).every(Boolean);
     console.log('결정론 규칙 검사 ' + (ok ? '통과' : '실패'));
     console.log(JSON.stringify(result));

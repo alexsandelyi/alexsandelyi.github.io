@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const crypto = require('crypto');
 const { HARNESS } = require('./soccer-harness.js');
 
 const GAME = path.join(__dirname, '..', 'games', 'soccer', 'index.html');
@@ -57,12 +58,45 @@ function readGameFiles() {
   }
 
   return files.map(rel => {
-    const file = path.join(dir, rel);
+    // 캐시 무효화용 ?v=... 가 붙어 있다. 경로에서 떼어낸다.
+    const clean = rel.split('?')[0];
+    const file = path.join(dir, clean);
     if (!fs.existsSync(file)) {
-      throw new Error(`${rel} 을 찾을 수 없습니다 (index.html 이 참조 중)`);
+      throw new Error(`${clean} 을 찾을 수 없습니다 (index.html 이 참조 중)`);
     }
-    return { name:rel, code:fs.readFileSync(file, 'utf8') };
+    return { name:clean, code:fs.readFileSync(file, 'utf8') };
   });
+}
+
+// js/ 내용으로 만든 캐시 무효화 스탬프. 파일을 고치면 값이 바뀌므로
+// index.html 의 ?v= 도 함께 갱신해야 한다. 안 하면 브라우저가 옛 파일을
+// 계속 쓰고, 배포 뒤에는 옛 JS 와 새 JS 가 섞인다.
+function jsStamp() {
+  const dir = path.join(path.dirname(GAME), 'js');
+  const h = crypto.createHash('sha256');
+  for (const name of fs.readdirSync(dir).sort()) {
+    h.update(fs.readFileSync(path.join(dir, name)));
+  }
+  return h.digest('hex').slice(0, 8);
+}
+
+// index.html 에 박힌 스탬프가 현재 js/ 와 맞는지.
+function stampIsFresh() {
+  const html = fs.readFileSync(GAME, 'utf8');
+  const want = jsStamp();
+  const found = [...html.matchAll(/src="js\/[^"?]+\?v=([0-9a-f]+)"/g)]
+    .map(m => m[1]);
+  return found.length > 0 && found.every(v => v === want);
+}
+
+// 스탬프를 현재 js/ 값으로 다시 박는다.
+function restamp() {
+  const html = fs.readFileSync(GAME, 'utf8');
+  const v = jsStamp();
+  const out = html.replace(/(src="js\/[^"?]+)(\?v=[0-9a-f]+)?(")/g,
+    (m, a, q, z) => a + '?v=' + v + z);
+  fs.writeFileSync(GAME, out);
+  return v;
 }
 
 // 이어 붙인 한 덩어리. 파일 경계를 신경 쓰지 않는 곳에서 쓴다.
@@ -171,5 +205,6 @@ function createSimulation(seed) {
 
 module.exports = {
   GAME, TARGET_WIN, TARGET_GOALS, LEVEL_NAMES, SWEEP_SPEEDS, TACTIC_PRESETS,
-  mulberry32, readGameFiles, readGameSource, makeSandbox, createSimulation
+  mulberry32, readGameFiles, readGameSource, makeSandbox, createSimulation,
+  jsStamp, stampIsFresh, restamp
 };

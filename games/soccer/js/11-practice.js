@@ -19,6 +19,22 @@ function soloKept(p) {
 }
 
 // 치운 선수는 목표 지점을 자기 자리로 고정해 가속하지 않게 한다.
+// 처음 상태로 되돌린다 — 선수는 센터, 공은 발밑, 쿨다운 해제.
+function soloReset(reason) {
+  soloPlayer = teams[0][9];
+  soloPlayer.x = FW / 2 - 80; soloPlayer.y = FH / 2;
+  soloPlayer.vx = soloPlayer.vy = 0;
+  soloPlayer.aimX = attackDir[0]; soloPlayer.aimY = 0;
+  soloPlayer.kickCd = soloPlayer.headCd = soloPlayer.tackleCd = 0;
+  soloPlayer.tackleT = soloPlayer.blockT = 0;
+  soloPlayer.actShoot = soloPlayer.actPass = soloPlayer.actThrough = 0;
+  soloPlayer.shootHeld = false; soloPlayer.shootCharge = 0;
+  ctrl[0] = soloPlayer;
+  setpiece = null; offside = null; state = 'play';
+  soloBall(0);
+  if (reason) notice = { text:reason, timer:1.1, color:'#F2CE7A' };
+}
+
 function soloTick() {
   if (!solo) return;
   if (state === 'title' || state === 'end') { soloPlayer = null; return; }
@@ -26,13 +42,12 @@ function soloTick() {
   // buildTeams() 가 선수 객체를 새로 만들므로 배열에 남아 있는지로 확인한다.
   // 옛 객체를 붙들면 조작이 먹지 않는다.
   if (!soloPlayer || teams[0].indexOf(soloPlayer) < 0) {
-    soloPlayer = teams[0][9];
-    soloPlayer.x = FW / 2 - 80; soloPlayer.y = FH / 2;
-    soloPlayer.vx = soloPlayer.vy = 0;
-    soloPlayer.aimX = attackDir[0]; soloPlayer.aimY = 0;
-    ctrl[0] = soloPlayer;
-    setpiece = null; offside = null; state = 'play';
-    soloBall(0);
+    soloReset(null);
+  } else if (state !== 'play') {
+    // 연습 모드에는 세트피스도 킥오프 대기도 두지 않는다. 공이 나가거나
+    // 골이 들어가면 곧바로 처음 상태로 되돌려 계속 시험하게 한다.
+    // 무엇 때문이었는지는 알림으로만 남긴다.
+    soloReset(state === 'goal' ? '골! — 다시 시작' : '아웃 — 다시 시작');
   }
   ctrl[0] = soloPlayer;            // 치운 선수에게 조작이 넘어가지 않게 한다
   ctrlLock[0] = 1;
