@@ -311,7 +311,7 @@ function act(teamIdx, kind, power = 0) {
   if (kind === 'switch') { cycleControlled(teamIdx); return; }
   if (kind === 'tackle') {
     if (ball.owner !== p && p.tackleCd <= 0) {
-      p.tackleT = 0.22; p.tackleCd = 0.85;
+      p.tackleT = TACKLE_T; p.tackleCd = 0.85;
     }
   } else if (ball.owner === p) {
     if (kind === 'pass') { p.actPass = 0.25; p.kickPower = power; }

@@ -91,6 +91,7 @@ function kickOwned(p, kind, power = 0.65) {
     ball.shotSide = p.side;
   }
   p.actShoot = p.actPass = p.actThrough = 0;
+  setPose(p, kind === 'shoot' ? 'shoot' : 'kick');
   return true;
 }
 
@@ -123,6 +124,7 @@ function deflectBall(p, nx, ny) {
   ball.vz = Math.abs(ball.vz) * 0.35 + 30;      // 몸에 맞고 살짝 뜬다
   ball.freeCd = Math.max(ball.freeCd, 0.06);
   p.trapCd = Math.max(p.trapCd, 0.18);
+  setPose(p, 'deflect');
 }
 
 // 헤딩(1.5~2.3m). 발로 닿을 수 없는 높이를 처리하는 유일한 수단이다.
@@ -155,6 +157,7 @@ function headBall(p, nx, ny) {
   ball.vz = lift;
   ball.freeCd = Math.max(ball.freeCd, 0.12);
   p.trapCd = Math.max(p.trapCd, HEAD_CD);
+  setPose(p, 'header');
 }
 
 function collide(p) {
@@ -206,6 +209,8 @@ function collide(p) {
       matchStats.onTarget[ball.shotSide]++; ball.shotCounted = true;
     }
     if (p.gkClaim) { matchStats.gkClaims[p.side]++; p.gkClaim = false; }
+    // 슛을 막았으면 다이빙, 그냥 잡은 공이면 펀트 자세로 보여준다.
+    setPose(p, ball.shotSide === 1 - p.side ? 'gk-dive' : 'gk-punt');
     ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
     p.kickCd = 0.35;
     const dir = attackDir[p.side];
@@ -228,9 +233,13 @@ function collide(p) {
   if (ball.z > CHEST_H) { headBall(p, nx, ny); return; }
   if (ball.z > FOOT_H) { deflectBall(p, nx, ny); return; }
 
+  // 여기는 **소유하지 않은 공**을 첫 터치로 차는 경로다. kickOwned 와
+  // 별개라 포즈도 따로 걸어야 한다 — 처음엔 빠뜨려서 한 경기 20슛에
+  // shoot 포즈가 한 번도 안 나왔다.
   let vx, vy, deliberateKick = false;
   if (p.actShoot > 0 && p.kickCd <= 0) {
     deliberateKick = true;
+    setPose(p, 'shoot');
     p.actShoot = 0; p.kickCd = 0.3;
     matchStats.shots[p.side]++;
     ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
@@ -239,6 +248,7 @@ function collide(p) {
       vx = Math.cos(ang) * SHOOT_V * p.shotMul; vy = Math.sin(ang) * SHOOT_V * p.shotMul;
   } else if (p.actPass > 0 && p.kickCd <= 0) {
     deliberateKick = true;
+    setPose(p, 'kick');
     p.actPass = 0; p.kickCd = 0.25;
     markOffside(p);
     const t = passTarget(p);
@@ -255,6 +265,7 @@ function collide(p) {
     }
   } else if (p.actThrough > 0 && p.kickCd <= 0) {
     deliberateKick = true;
+    setPose(p, 'kick');
     p.actThrough = 0; p.kickCd = 0.25;
     markOffside(p);
     const t = passTarget(p, true);

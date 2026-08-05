@@ -35,9 +35,10 @@
 | `assets/clickable-v1/` | 미참조 구버전. gitignore |
 | `app-ads.txt` | AdMob 인증. **도메인 루트에 있어야 하므로 지우면 안 된다** |
 | `games/soccer/` | 동네 축구 11v11. 의존성 없는 Canvas 2D |
-| `games/soccer/js/` | 게임 코드 11개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
+| `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
+| `games/soccer/assets/players.png` | 선수 스프라이트 시트 34장. `tools/sprite-gen.py` 가 만든다 — 손으로 고치지 않는다 |
 | `games/soccer/*.md` | 설계 문서. 목차는 `README.md`, 작성 규칙은 `games/soccer/AGENTS.md` |
-| `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정. 사이트 동작과 무관 |
+| `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
 | `tmp/` | 패치 스크립트와 번들 추출물. gitignore |
 | `.nojekyll` | Jekyll 우회. 이게 없을 때 Pages 빌드가 실패한 이력이 있다 |
 

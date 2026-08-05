@@ -1,5 +1,5 @@
 'use strict';
-// 11-practice.js — 연습 모드 — 선수 1명 격리, 공 리셋, 실시간 계측 HUD
+// 12-practice.js — 연습 모드 — 선수 1명 격리, 공 리셋, 실시간 계측 HUD
 // 클래식 <script> 라 전역 스코프를 공유한다. index.html 의 로드 순서를
 // 지켜야 한다 — const 는 뒤 파일에서 앞 파일을 참조할 수만 있다.
 

@@ -75,7 +75,11 @@ Get-ChildItem -LiteralPath '.\games\soccer' -File -Filter '*.md' |
 
 ## 코드 파일 500줄 제한
 
-- 코드 파일(`.js`, `.html`)은 **500줄을 넘지 않는다**. 설계 문서는 200줄이다.
+- 코드 파일(`.js`, `.html`, `.py`)은 **500줄을 넘지 않는다**. 설계 문서는
+  200줄이다.
+- 선수 스프라이트는 `tools/sprite-gen.py` 가 만든다. PNG 를 손으로 고치지
+  않는다 — 다음 생성 때 사라진다. 시트를 다시 만들면 `--restamp` 까지
+  이어서 돌린다 (`SPRITE_V` 가 바뀌기 때문).
 - 게임 코드는 `games/soccer/js/NN-이름.js` 로 나누고 `index.html` 이
   클래식 `<script src>` 로 순서대로 부른다. **ES 모듈로 바꾸지 않는다** —
   전역 스코프 공유가 깨지면 빌드가 필요해지고 측정 도구도 못 쓴다.
@@ -86,7 +90,7 @@ Get-ChildItem -LiteralPath '.\games\soccer' -File -Filter '*.md' |
 - 줄 수 확인:
 
 ```bash
-for f in games/soccer/js/*.js tools/*.js; do
+for f in games/soccer/js/*.js tools/*.js tools/*.py; do
   c=$(wc -l < "$f"); [ "$c" -gt 500 ] && echo "초과: $f ($c)"
 done
 ```

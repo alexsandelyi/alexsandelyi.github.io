@@ -24,7 +24,8 @@
 | [aerial-play.md](aerial-play.md) | 공중 플레이. 높이별 경합, 헤딩, GK 하이볼 |
 | [kick-loft.md](kick-loft.md) | 킥 높이 제어. 사람의 땅볼 패스·센터링, AI 로빙·칩, 슛 로프트 |
 | [aerial-balance.md](aerial-balance.md) | 공중 플레이가 승률·득점을 얼마나 움직였는지 측정 기록 |
-| [player-sprites.md](player-sprites.md) | 선수 그림. 액션별 포즈 목록, 방향·프레임, 에셋 규격 |
+| [player-sprites.md](player-sprites.md) | 선수 그림. 액션별 포즈 목록, 방향, 포즈 우선순위, 규격 |
+| [sprite-pipeline.md](sprite-pipeline.md) | 스프라이트 만들기. 생성기, 프레임 수, 구현, 겪은 함정 |
 | [practice-mode.md](practice-mode.md) | 혼자 시험하기 — 연습 모드, 키 배치, `soccer-lab.js` |
 | [roadmap.md](roadmap.md) | 구현 순서, 단계별 완료 기준, 미결 질문 |
 

@@ -202,6 +202,8 @@ function buildTeams() {
       actShoot:0, actPass:0, actThrough:0, shootHeld:false, shootCharge:0,
       kickPower:0, gkClaim:false,
       aimX:attackDir[side], aimY:0, manualAim:false, yellow:0,
+      // 그리기 전용 (09-sprites.js). 물리·AI 는 읽지 않는다.
+      pose:'idle', poseT:0, stride:0,
       aiT:Math.random() * 0.3, aiTx:0, aiTy:0, gkDifficulty:LEVELS[1].gk
     };
     });
@@ -222,6 +224,7 @@ function resetPositions(kickSide) {
     p.actShoot = p.actPass = p.actThrough = 0;
     p.shootHeld = false; p.shootCharge = 0;
     p.kickPower = 0; p.gkClaim = false;
+    p.pose = 'idle'; p.poseT = 0;      // stride 는 그대로 둔다 — 걸음 위상뿐이다
     // 킥오프: 공을 넣는 팀만 센터서클 안으로 한 명 들여보낸다
     if (p.role === 'FW' && p.no === 9 && side === kickSide) {
       p.x = FW / 2 - attackDir[side] * R_PLAYER * 2;

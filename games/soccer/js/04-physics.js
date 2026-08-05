@@ -49,6 +49,9 @@ const OWNER_SPEED = 0.88, REOWN_CD = 0.35;
 const SPEED_WALK = 5 / 3.6 * M, SPEED_JOG = 11 / 3.6 * M;
 const SPEED_RUN = 20 / 3.6 * M, SPEED_SPRINT = P_MAX;
 const TACKLE_TRIGGER = 32, SHOT_BLOCK_REACH = 36;
+// 태클·블록이 유지되는 시간. 09-sprites.js 가 프레임을 고를 때도 쓰므로
+// 리터럴로 흩뿌리지 않는다.
+const TACKLE_T = 0.22, BLOCK_T = 0.25;
 const OPPONENT_SPEED_MUL = [1, 1, 1];
 // 평소에는 라인 초과분을 되돌리되, 공을 소유한 동안 FW가 짧은 침투
 // 구간을 갖는다. 어려울수록 구간이 짧고 드물어 라인을 더 잘 지킨다.
@@ -82,6 +85,18 @@ function movePlayer(p, ax, ay, dt, maxSpeed = P_MAX) {
   if (p.actPass > 0) p.actPass -= dt;
   if (p.actThrough > 0) p.actThrough -= dt;
   if (p.shootHeld) p.shootCharge = Math.min(1, p.shootCharge + dt / 1.05);
+  advancePose(p, dt);
+}
+
+// 그리기 전용 상태. 물리·AI·경기 판정은 절대 읽지 않는다 — 읽는 순간
+// 프레임률이나 창 크기가 경기 결과를 바꿀 수 있다.
+// 보폭은 시간이 아니라 **이동 거리**로 쌓는다. 시간으로 쌓으면 느리게
+// 걸을 때 발이 땅에서 미끄러진다. 조준 반대로 움직이면(뒷걸음질)
+// 거꾸로 쌓아 걸음도 뒤로 간다.
+function advancePose(p, dt) {
+  if (p.poseT > 0) p.poseT -= dt;
+  const back = p.vx * p.aimX + p.vy * p.aimY < 0 ? -1 : 1;
+  p.stride += Math.hypot(p.vx, p.vy) * dt * back;
 }
 
 function staminaLimitedSpeed(p, requested, dt) {

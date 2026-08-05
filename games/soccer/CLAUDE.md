@@ -53,7 +53,7 @@ wc -l games/soccer/*.md
 압축하지 말고 책임별로 나눈다.
 
 ```bash
-for f in games/soccer/js/*.js tools/*.js; do
+for f in games/soccer/js/*.js tools/*.js tools/*.py; do
   c=$(wc -l < "$f"); [ "$c" -gt 500 ] && echo "초과: $f ($c)"
 done
 ```
@@ -71,8 +71,8 @@ done
 ### 로드 순서가 곧 의존 순서다
 
 **호이스팅은 파일 안에서만 동작한다.** 앞 파일의 최상위 코드가 뒤 파일의
-함수를 참조하면 `ReferenceError` 다. 실제로 겪었다 — `10-hud.js` 가
-`11-practice.js` 의 `startPractice` 를 등록하다 터졌다. 콜백 안에서
+함수를 참조하면 `ReferenceError` 다. 실제로 겪었다 — `11-hud.js` 가
+`12-practice.js` 의 `startPractice` 를 등록하다 터졌다. 콜백 안에서
 부르거나 화살표로 감싸면 호출 시점에 찾으므로 안전하다.
 
 ```js
@@ -95,6 +95,14 @@ node tools/soccer-sim.js --restamp
 
 안 갱신하면 브라우저가 옛 파일을 계속 쓴다. 배포 뒤에는 더 나쁘다 —
 바뀐 파일만 새로 받고 나머지는 캐시라 **옛 JS 와 새 JS 가 섞인다.**
+
+스프라이트 시트도 같은 문제가 있다. `sprite-gen.py` 가 `09-sprites.js` 의
+`SPRITE_V` 를 갱신하므로 **두 명령을 이어서** 돌린다.
+
+```bash
+python tools/sprite-gen.py            # 시트 + SPRITE_V
+node tools/soccer-sim.js --restamp    # index.html 의 ?v=
+```
 
 셀프테스트의 `versionStampFresh` 가 이걸 잡는다.
 

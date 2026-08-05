@@ -129,7 +129,7 @@ function defensiveTarget(p, fallback, isChaser) {
         Math.hypot(b.x - block.x, b.y - block.y)).slice(0, 3);
     const bi = blockers.indexOf(p);
     if (bi >= 0) {
-      p.blockT = Math.max(p.blockT, .25);
+      p.blockT = Math.max(p.blockT, BLOCK_T);
       const offset = (bi - 1) * 20;
       target = { x:block.x - gy / gm * offset, y:block.y + gx / gm * offset };
     }

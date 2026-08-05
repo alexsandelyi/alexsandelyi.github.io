@@ -1,5 +1,5 @@
 'use strict';
-// 10-hud.js — HUD 동기화, localStorage 저장·마이그레이션, 팀 UI, 제목 화면과 부팅
+// 11-hud.js — HUD 동기화, localStorage 저장·마이그레이션, 팀 UI, 제목 화면과 부팅
 // 클래식 <script> 라 전역 스코프를 공유한다. index.html 의 로드 순서를
 // 지켜야 한다 — const 는 뒤 파일에서 앞 파일을 참조할 수만 있다.
 
@@ -190,7 +190,7 @@ for (const b of document.querySelectorAll('.len'))
   b.addEventListener('click', () => selectLength(+b.dataset.sec));
 document.getElementById('btn1p').addEventListener('click', () => startMatch('1p'));
 document.getElementById('btnHome').addEventListener('click', showTitle);
-// 화살표로 감싸 호출 시점에 찾는다 — startPractice 는 11-practice.js 에 있어
+// 화살표로 감싸 호출 시점에 찾는다 — startPractice 는 12-practice.js 에 있어
 // 이 파일이 로드될 때는 아직 없다 (클래식 스크립트는 파일 단위 호이스팅).
 document.getElementById('btnPractice').addEventListener('click', () => startPractice());
 document.getElementById('btnTournament').addEventListener('click', () => {

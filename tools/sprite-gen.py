@@ -8,10 +8,17 @@
     python tools/sprite-gen.py
 
 Pillow 만 쓴다. tools/ 는 개발 도구라 사이트 의존성은 늘지 않는다.
+
+시트를 다시 만들면 09-sprites.js 의 SPRITE_V 도 함께 고친다. 그래야
+js/ 해시가 바뀌어 index.html 의 ?v= 갱신(--restamp)까지 이어진다.
+안 그러면 브라우저가 옛 시트를 계속 쓴다.
 """
 
+import hashlib
+import io
 import math
 import os
+import re
 import sys
 
 try:
@@ -276,6 +283,25 @@ def build():
     return sheet, index
 
 
+def stamp_js(root, png_path):
+    """09-sprites.js 의 SPRITE_V 를 시트 내용 해시로 덮어쓴다."""
+    js = os.path.join(root, 'games', 'soccer', 'js', '09-sprites.js')
+    if not os.path.exists(js):
+        return None
+    with open(png_path, 'rb') as f:
+        v = hashlib.sha256(f.read()).hexdigest()[:8]
+    with io.open(js, encoding='utf-8') as f:
+        src = f.read()
+    out, n = re.subn(r"(const SPRITE_V = ')[0-9a-f]+(')",
+                     lambda m: m.group(1) + v + m.group(2), src)
+    if n != 1:
+        sys.exit('09-sprites.js 에서 SPRITE_V 를 %d 개 찾았습니다 (1개여야 함)' % n)
+    if out != src:
+        with io.open(js, 'w', encoding='utf-8', newline='') as f:
+            f.write(out)
+    return v
+
+
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = os.path.join(root, 'games', 'soccer', 'assets')
@@ -287,6 +313,9 @@ def main():
           % (os.path.relpath(path, root), sheet.width, sheet.height,
              sum(n for _, n in SHEET)))
     print('POSES = ' + ', '.join('%s:%d+%d' % (n, c, k) for n, c, k in index))
+    v = stamp_js(root, path)
+    if v:
+        print('SPRITE_V = %s  →  이어서 `node tools/soccer-sim.js --restamp`' % v)
 
 
 if __name__ == '__main__':

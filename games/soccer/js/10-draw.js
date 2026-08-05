@@ -1,5 +1,5 @@
 'use strict';
-// 09-draw.js — 경기장·선수·공 그리기, 미니맵, 배너와 알림
+// 10-draw.js — 경기장·선수·공 그리기, 미니맵, 배너와 알림
 // 클래식 <script> 라 전역 스코프를 공유한다. index.html 의 로드 순서를
 // 지켜야 한다 — const 는 뒤 파일에서 앞 파일을 참조할 수만 있다.
 
@@ -81,12 +81,17 @@ function drawPlayer(p) {
   ctx.fillStyle = 'rgba(0,0,0,.32)';
   ctx.beginPath(); ctx.ellipse(p.x + r * .18, p.y + r * .25,
     r, r * 0.8, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = base;
-  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
-  if (p.blockT > 0) {
-    ctx.strokeStyle = base; ctx.lineWidth = r * .65; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(p.x, p.y - r * 1.35);
-    ctx.lineTo(p.x, p.y + r * 1.35); ctx.stroke();
+
+  if (!drawPlayerSprite(p, r)) {
+    // 시트를 아직 못 받았거나 아예 못 받는다. 원으로 계속 돌아간다 —
+    // 그림이 없다고 경기가 멈추면 안 된다.
+    ctx.fillStyle = base;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+    if (p.blockT > 0) {
+      ctx.strokeStyle = base; ctx.lineWidth = r * .65; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - r * 1.35);
+      ctx.lineTo(p.x, p.y + r * 1.35); ctx.stroke();
+    }
   }
 
   // 조작 중인 선수는 흰 테두리 + 위쪽 삼각 표시 (22명 중에서 찾기 쉽게)
@@ -111,11 +116,13 @@ function drawPlayer(p) {
     ctx.restore();
   }
 
-  // 등번호는 세워서 그린다
+  // 등번호는 세워서 그린다. 22명 구분이 전적으로 여기 달려 있어서
+  // 스프라이트에 굽지 않고 늘 위에 얹는다.
   ctx.save();
   ctx.translate(p.x, p.y);
   if (view.rot) ctx.rotate(Math.PI / 2);
-  ctx.fillStyle = '#152528';
+  // 스프라이트는 가운데가 머리라 어둡다. 원일 때는 팀 색이라 밝다.
+  ctx.fillStyle = spriteReady ? '#F2F7F4' : '#152528';
   ctx.font = '700 ' + Math.max(7, r * 1.05) + 'px ' + bodyFont();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(p.isGK ? 'GK' : String(p.no), 0, 1);

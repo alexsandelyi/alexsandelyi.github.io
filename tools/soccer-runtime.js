@@ -194,7 +194,7 @@ function createSimulation(seed) {
   // 파일을 하나로 이어 붙이지 않고 브라우저처럼 한 장씩 실행한다.
   // 이어 붙이면 함수 호이스팅이 전체에 걸쳐 동작해, 뒤 파일의 함수를 앞
   // 파일이 최상위에서 참조하는 버그를 놓친다. 실제로 그렇게 놓친 적이
-  // 있다(10-hud.js 가 11-practice.js 의 startPractice 를 참조).
+  // 있다(11-hud.js 가 12-practice.js 의 startPractice 를 참조).
   // 클래식 스크립트는 전역 렉시컬 스코프를 공유하므로 const 는 그대로 보인다.
   for (const f of readGameFiles()) {
     vm.runInContext(f.code, context, { filename:f.name });
