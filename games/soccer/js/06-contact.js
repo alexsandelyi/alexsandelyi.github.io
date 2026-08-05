@@ -28,6 +28,9 @@ function kickOwned(p, kind, power = 0.65) {
     // 정한다. AI 도 이 함수를 쓰므로 조작 중인 선수에게만 적용한다 —
     // 전부 땅볼로 막으면 AI 의 크로스가 사라진다. 사람이 띄우려면 `]`.
     const groundPass = p === ctrl[0] && !through;
+    // 사람의 `]` 는 무조건 센터링이다 — 위치·대상과 무관하게 늘 띄운다.
+    // 세기는 아래에서 통째로 덮어쓰므로 여기서는 계산에서 빼기만 한다.
+    const humanCross = p === ctrl[0] && through;
     const t = passTarget(p, through);
     if (t) {
       const lead = through ? Math.min(230, Math.hypot(t.vx, t.vy) * 0.55 + 90) : 0;
@@ -39,21 +42,24 @@ function kickOwned(p, kind, power = 0.65) {
         420 + d * p.passMul * (through ? 1.0 : 0.9));
       // 측면 깊은 위치에서 중앙으로 보내면 크로스다. 체공을 길게 줘서
       // 받는 선수가 낙하 지점까지 따라갈 수 있게 한다.
-      const cross = !groundPass && Math.min(p.y, FH - p.y) < FH * 0.24 &&
+      const cross = !groundPass && !humanCross &&
+        Math.min(p.y, FH - p.y) < FH * 0.24 &&
         (dir === 1 ? p.x : FW - p.x) > FW * 0.58 &&
         Math.abs(t.y - FH / 2) < FH * 0.30;
       if (cross) {
         matchStats.crosses[p.side]++;
         lift = loftFor(d, v, 1.6);
-      } else if (through && lp > 0.5) {
+      } else if (through && !humanCross && lp > 0.5) {
         v *= 0.7; lift = loftFor(d, v, 2.0);        // 칩 — 수비선 뒤로
-      } else if (!groundPass && lp > 0) {
+      } else if (!groundPass && !humanCross && lp > 0) {
         v *= 0.9; lift = loftFor(d, v, 1.1) * lp;   // 로빙 패스
       }
     } else if (aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 800; ty = p.y + p.aimY / aimMag * 800;
       v = PASS_V * p.passMul * (through ? 0.95 : 0.8);
-      if (!groundPass && lp > 0) { v *= 0.9; lift = loftFor(800, v, 1.1) * lp; }
+      if (!groundPass && !humanCross && lp > 0) {
+        v *= 0.9; lift = loftFor(800, v, 1.1) * lp;
+      }
     } else {
       const a = aimAt(p.side); tx = a.x; ty = a.y; v = PASS_V * 0.8;
     }
@@ -62,6 +68,17 @@ function kickOwned(p, kind, power = 0.65) {
     if (groundPass) {
       v = PASS_V * p.passMul * (0.45 + 0.55 * power);
       lift = 0;
+    }
+    // 체공을 먼저 정하고 거리를 맞추는 순서다 — 그래야 머리 높이(2.3m)
+    // 위로 지나가 수비 발에 걸리지 않는다. 누른 길이가 체공과 거리를 함께
+    // 늘린다. 공기 저항 때문에 실제 낙하 지점은 reach 보다 짧다 —
+    // 실측 13.7m·정점 3.21m ~ 38.8m·정점 4.70m (aerial-play.md).
+    if (humanCross) {
+      const hang = 1.7 + 0.5 * power;
+      const reach = (16 + 42 * power) * M;
+      v = reach / hang;
+      lift = GRAVITY * hang / 2;
+      matchStats.crosses[p.side]++;
     }
   }
   if (kind === 'pass' || kind === 'through') markOffside(p);
