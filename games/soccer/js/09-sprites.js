@@ -7,17 +7,25 @@
 // 만든다. **시트를 다시 만들면 SPRITE_V 가 자동으로 갱신되고, 그러면
 // js/ 해시가 바뀌므로 `node tools/soccer-sim.js --restamp` 를 돌려야 한다.**
 
-const SPRITE_V = '51fdcaac';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
+const SPRITE_V = '1026a22e';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
 const SPRITE_CELL = 64;
 // 셀 대비 몸(어깨) 지름. 그리기 크기를 몸 기준으로 맞추는 데 쓴다 —
 // 셀 기준으로 맞추면 팔다리 여백까지 세어 선수가 작아 보인다.
-const SPRITE_BODY = 0.375;
+// **sprite-gen.py 가 덮어쓴다.** STYLE 이나 ART 를 바꾸면 값이 달라지므로
+// 손으로 맞추지 않는다.
+const SPRITE_BODY = 0.2255;
+// 그린 선수를 물리 반지름보다 얼마나 크게 보일지. 1.0 이면 몸 지름이
+// 정확히 2·R_PLAYER(0.6m)인데, 그 크기로는 톱다운에서 잘 안 읽힌다 —
+// 예전 원은 단색 덩어리라 버텼지만 스프라이트는 머리·팔·발로 쪼개져
+// 색 면적이 작다. **그리기에만 곱한다. 접촉 반경·물리는 그대로다.**
+const SPRITE_GAIN = 1.35;
 
 // 시트에서의 시작 칸과 장수. sprite-gen.py 의 SHEET 와 같아야 한다.
 const POSES = {
-  idle:[0, 1], walk:[1, 4], run:[5, 4], kick:[9, 3], shoot:[12, 3],
-  charge:[15, 1], tackle:[16, 3], block:[19, 2], header:[21, 3],
-  deflect:[24, 2], 'gk-dive':[26, 3], 'gk-claim':[29, 2], 'gk-punt':[31, 3]
+  idle:[0, 1], walk:[1, 4], run:[5, 2], kick:[7, 3], shoot:[10, 3],
+  charge:[13, 1], tackle:[14, 3], block:[17, 2], header:[19, 3],
+  deflect:[22, 2], 'gk-dive':[24, 3], 'gk-claim':[27, 2],
+  'gk-punt':[29, 3]
 };
 
 // 원샷 동작의 재생 길이(초). **쿨다운과 다르다.** headCd 0.6 은 연속
@@ -28,9 +36,12 @@ const POSE_DUR = {
   'gk-dive':0.34, 'gk-punt':0.30
 };
 
-// 이동 루프 한 장이 넘어가는 데 걸리는 이동 거리(논리 단위, 0.35m).
-// 시간이 아니라 거리로 넘겨야 발이 미끄러지지 않는다.
-const STRIDE = 7;
+// 이동 루프 한 장이 넘어가는 데 걸리는 **이동 거리**(논리 단위).
+// 시간으로 넘기면 느리게 걸을 때 발이 땅에서 미끄러진다.
+// 포즈마다 다르다 — 걷기는 4장이라 한 걸음이 0.35m, 달리기는 좌우 반전
+// 2장이라 한 장이 반 주기(1.1m)를 맡는다. 하나로 묶으면 달리기가
+// 미친 듯이 깜빡인다.
+const POSE_STRIDE = { walk:7, run:22 };
 
 // poseT 가 아니라 **게임 쪽 타이머**로 도는 포즈. 태클·블록은 원샷이
 // 아니라 지속 상태라 poseT 를 쓰지 않는다. 이걸 빠뜨렸더니 두 포즈가
@@ -46,12 +57,17 @@ function tintSheet(img, colour) {
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
   const c = cv.getContext('2d');
-  // 0줄(상의)을 팀 색으로 칠한다. source-in 은 이미 그린 알파만 남긴다.
+  // 0줄(유니폼)은 **회색조**다. multiply 로 팀 색을 곱해야 일러스트의
+  // 접힘과 그림자가 살아남는다. source-in 으로 단색을 부으면 평면이 된다.
+  // 손으로 그린 포즈는 순백이라 곱해도 팀 색 그대로다 — 둘 다 맞는다.
   c.drawImage(img, 0, 0, w, h, 0, 0, w, h);
-  c.globalCompositeOperation = 'source-in';
+  c.globalCompositeOperation = 'multiply';
   c.fillStyle = colour;
   c.fillRect(0, 0, w, h);
-  // 1줄(머리·팔·발·윤곽)은 그대로 얹는다.
+  // multiply 는 투명한 곳까지 칠한다. 알파를 원본으로 되돌린다.
+  c.globalCompositeOperation = 'destination-in';
+  c.drawImage(img, 0, 0, w, h, 0, 0, w, h);
+  // 1줄(머리·팔·다리·축구화)은 팀 색과 무관하므로 그대로 얹는다.
   c.globalCompositeOperation = 'source-over';
   c.drawImage(img, 0, h, w, h, 0, 0, w, h);
   return cv;
@@ -106,8 +122,8 @@ function poseFrame(p, name) {
   const slot = POSES[name] || POSES.idle;
   const col = slot[0], n = slot[1];
   if (n === 1) return col;
-  if (name === 'walk' || name === 'run') {
-    const i = Math.floor(p.stride / STRIDE) % n;
+  if (POSE_STRIDE[name]) {
+    const i = Math.floor(p.stride / POSE_STRIDE[name]) % n;
     return col + (i < 0 ? i + n : i);
   }
   const dur = POSE_DUR[name];
@@ -141,7 +157,7 @@ function drawPlayerSprite(p, r) {
   const col = poseFrame(p, playerPose(p));
   // 그리기 크기는 셀이 아니라 **몸 지름** 기준이다. 셀로 맞추면 팔다리
   // 여백까지 세어 선수가 원보다 작아 보인다.
-  const s = 2 * r / SPRITE_BODY;
+  const s = 2 * r * SPRITE_GAIN / SPRITE_BODY;
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.rotate(Math.atan2(p.aimY, p.aimX));

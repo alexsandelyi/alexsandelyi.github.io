@@ -49,7 +49,8 @@
 | `app-ads.txt` | AdMob 인증 파일. 루트 위치를 유지하며 삭제 금지 |
 | `games/soccer/` | 의존성 없는 Canvas 2D 축구 게임 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 순서 로드. 파일당 500줄 이하 |
-| `games/soccer/assets/players.png` | 선수 스프라이트 시트 34장. `tools/sprite-gen.py` 산출물. 손으로 고치지 않음 |
+| `games/soccer/assets/players.png` | 선수 스프라이트 시트 32장. `tools/sprite-gen.py` 산출물. 손으로 고치지 않음 |
+| `tools/sprite-src/` | 손으로 그린 원본 일러스트. 저장소 밖 원본에 의존하지 않는다 |
 | `games/soccer/*.md` | 설계 문서. 목차는 `README.md`, 작성 규칙은 `games/soccer/AGENTS.md` |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
 | `tmp/` | 재적용 가능한 패치와 임시 추출물. Git 추적 제외 |

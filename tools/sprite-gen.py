@@ -21,6 +21,9 @@ import os
 import re
 import sys
 
+# 같은 폴더의 sprite_import 를 부르려면 경로가 필요하다 (패키지가 아니다).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 try:
     from PIL import Image, ImageDraw
 except ImportError:
@@ -31,13 +34,17 @@ SS = 4             # 슈퍼샘플링 배율. 4배로 그린 뒤 축소해 계단
 ROWS = 2           # 0 = 상의(틴트 대상), 1 = 머리·다리·윤곽
 # 그림이 셀을 얼마나 채우는지. 회전으로 방향을 내므로 내용은 셀에 내접한
 # 원(반지름 32) 안에 들어야 한다. 제일 멀리 뻗는 것은 태클의 뻗은 발이
-# 아니라 **좌우로 벌린 팔**이다 — gk-dive 가 어깨 7 + 팔 23 + 손끝 1.7 로
-# 약 31.8 이다. 여유 2px 을 남긴다. build() 가 매번 검사한다.
-ART = 0.92
+# 아니라 **뒤로 뻗은 다리**다 — 엉덩이 -11 에서 달릴 때 18.5 뻗고 축구화가
+# 붙어 약 32 다. 몸을 길게 바꾸면서 1.05 로는 잘려 낮췄다.
+# build() 가 매 셀을 check_fit() 으로 검사하므로 짐작하지 않아도 된다.
+ART = 0.88
 
 SHIRT = (255, 255, 255, 255)      # 흰색으로 굽고 런타임에 팀 색을 입힌다
 SKIN = (214, 160, 118, 255)       # 팔·얼굴. 상의와 대비돼야 사지가 읽힌다
-BOOT = (26, 28, 32, 255)          # 발·머리카락·윤곽선. 제일 어두운 값
+HAIR = (38, 32, 30, 255)          # 뒤통수. 앞쪽 살색 초승달이 방향 단서다
+SOCK = (44, 50, 58, 255)          # 다리(양말). 잔디보다 어둡다
+BOOT = (22, 24, 28, 255)          # 윤곽선. 제일 어두운 값
+SHOE = (236, 240, 244, 255)       # 축구화. 밝아야 발끝이 어디인지 보인다
 
 # 선수는 항상 +x(오른쪽)를 보게 그린다. 방향은 런타임 회전으로 낸다.
 # 좌표는 셀 중심 기준, 단위는 축소 전 픽셀(CELL*SS).
@@ -87,26 +94,38 @@ class Pen:
 #   arms/legs  : [(각도, 길이), (각도, 길이)] — 위쪽(-y) 먼저
 # 각도는 +x 가 0, 시계 방향(+y)이 양수다.
 
-ARM_LEN, LEG_LEN = 12.0, 10.0
+# 팔은 어깨에서 옆으로 벌어지고, 다리는 몸 뒤로 길게 뻗는다.
+# 다리가 몸 길이의 절반을 차지한다 — 위에서 비스듬히 보면 그렇게 보이고,
+# 여기가 예전 수직 톱다운 그림과 제일 다른 점이다.
+# 몸이 길어지면서 팔도 같이 길어져야 한다. 9 로는 어깨가 몸통(ry 8.2)
+# 안에 묻혀 팔이 위아래에 붙은 얇은 조각으로만 보였다.
+ARM_LEN, LEG_LEN = 12.5, 13.0
+
+# 다리 기본 각도. 180 이 정확한 뒤쪽인데 그 근처에서는 각도 부호가
+# 뒤집혀 두 다리가 서로 넘어간다. 168 로 조금 벌려 각자 제 쪽에 둔다.
+LEG_BACK = 168.0
 
 
 def base():
     return {'lean': 0.0, 'squash': 1.0,
-            'arms': [(-104.0, ARM_LEN), (104.0, ARM_LEN)],
-            'legs': [(-112.0, LEG_LEN), (112.0, LEG_LEN)]}
+            'arms': [(-74.0, ARM_LEN), (74.0, ARM_LEN)],
+            'legs': [(-LEG_BACK, LEG_LEN), (LEG_BACK, LEG_LEN)]}
 
 
 def cycle(f, n, swing, arm_swing, lean):
-    """걷기·달리기 루프. 팔은 다리와 반대로 흔든다."""
+    """걷기·달리기 루프.
+
+    **보폭은 각도가 아니라 길이로 낸다.** 위에서 보면 다리는 원근으로
+    짧아져 보이므로, 앞으로 나온 다리는 짧고 뒤로 뻗은 다리는 길다.
+    각도로 크게 돌리면 180 근처에서 두 다리가 서로 넘어간다.
+    """
     t = math.sin(f / n * math.tau)
     p = base()
     p['lean'] = lean
-    # 부호 규약 덕에 두 발이 저절로 반대 위상이 된다 — 위쪽 발은 0(앞)
-    # 쪽으로, 아래쪽 발은 180(뒤) 쪽으로 돈다.
-    p['legs'] = [(-112.0 + swing * t, LEG_LEN + swing * t * 0.10),
-                 (112.0 + swing * t, LEG_LEN - swing * t * 0.10)]
-    p['arms'] = [(-104.0 - arm_swing * t, ARM_LEN),
-                 (104.0 - arm_swing * t, ARM_LEN)]
+    p['legs'] = [(-LEG_BACK + swing * 0.30 * t, LEG_LEN * (1 + swing / 100 * t)),
+                 (LEG_BACK + swing * 0.30 * t, LEG_LEN * (1 - swing / 100 * t))]
+    p['arms'] = [(-74.0 - arm_swing * t, ARM_LEN),
+                 (74.0 - arm_swing * t, ARM_LEN)]
     return p
 
 
@@ -115,141 +134,179 @@ def pose(name, f):
     if name == 'idle':
         return p
     if name == 'walk':
-        return cycle(f, 4, 34.0, 18.0, 0.0)
+        return cycle(f, 4, 26.0, 16.0, 0.0)
     if name == 'run':
-        return cycle(f, 4, 54.0, 34.0, 1.6)
+        return cycle(f, 4, 42.0, 32.0, 1.4)
     if name == 'kick':
-        # 준비 → 임팩트 → 팔로스루. 오른발(+y)이 찬다.
-        sw = [-40.0, 52.0, 76.0][f]
+        # 차는 발(+y)이 뒤에서 옆을 거쳐 앞으로 돈다. 디딤발은 그대로.
+        sw = [162.0, 108.0, 52.0][f]
         p['lean'] = [-1.0, 1.4, 2.0][f]
-        p['legs'] = [(-112.0, LEG_LEN), (112.0 - sw, LEG_LEN + abs(sw) * 0.09)]
-        p['arms'] = [(-124.0 + sw * 0.3, ARM_LEN), (112.0, ARM_LEN)]
+        p['legs'] = [(-LEG_BACK, LEG_LEN * 0.95),
+                     (sw, LEG_LEN * [1.05, 1.20, 1.12][f])]
+        p['arms'] = [(-118.0 + (162 - sw) * 0.16, ARM_LEN), (104.0, ARM_LEN)]
         return p
     if name == 'shoot':
-        sw = [-56.0, 66.0, 96.0][f]
+        sw = [172.0, 96.0, 28.0][f]
         p['lean'] = [-1.6, 2.0, 2.6][f]
-        p['legs'] = [(-112.0, LEG_LEN), (112.0 - sw, LEG_LEN + abs(sw) * 0.12)]
-        p['arms'] = [(-132.0 + sw * 0.4, ARM_LEN + 2), (104.0, ARM_LEN)]
+        p['legs'] = [(-LEG_BACK, LEG_LEN * 0.92),
+                     (sw, LEG_LEN * [1.10, 1.30, 1.22][f])]
+        p['arms'] = [(-126.0 + (172 - sw) * 0.20, ARM_LEN + 1.5), (98.0, ARM_LEN)]
         return p
     if name == 'charge':
-        # 힘을 모으는 자세. 차는 발을 뒤로 빼고 반대 팔을 젖힌다.
+        # 힘을 모은다 — 차는 발을 뒤로 크게 빼고 반대 팔을 젖힌다.
         p['lean'] = -1.2
-        p['legs'] = [(-112.0, LEG_LEN), (142.0, LEG_LEN + 2.0)]
-        p['arms'] = [(-142.0, ARM_LEN + 2), (96.0, ARM_LEN)]
+        p['legs'] = [(-LEG_BACK + 6, LEG_LEN * 0.92), (176.0, LEG_LEN * 1.22)]
+        p['arms'] = [(-132.0, ARM_LEN + 1.5), (88.0, ARM_LEN)]
         return p
     if name == 'tackle':
-        # 몸을 낮추고 한 발을 앞으로 완전히 뻗는다. 실루엣이 길어진다.
+        # 한 발을 앞으로 완전히 뻗고 몸을 낮춘다. 실루엣이 길어진다.
         ext = [0.35, 1.0, 0.8][f]
-        p['lean'] = 2.2 * ext
-        p['squash'] = 1.0 - 0.24 * ext
-        p['legs'] = [(-112.0 + 80 * ext, LEG_LEN + 11 * ext),
-                     (124.0, LEG_LEN + 1)]
-        p['arms'] = [(-148.0, ARM_LEN + 3 * ext), (148.0, ARM_LEN + 3 * ext)]
+        p['lean'] = 2.0 * ext
+        p['squash'] = 1.0 - 0.22 * ext
+        p['legs'] = [(-160.0 + 26 * ext, LEG_LEN * (0.9 + 0.15 * ext)),
+                     (150.0 - 128 * ext, LEG_LEN * (1.0 + 0.30 * ext))]
+        p['arms'] = [(-142.0, ARM_LEN + 2 * ext), (142.0, ARM_LEN + 2 * ext)]
         return p
     if name == 'block':
-        # 두 팔을 좌우로 벌려 슛 궤도를 막는다.
+        # 두 팔을 좌우로 벌리고 다리도 넓게 벌려 궤도를 막는다.
         sp = [0.6, 1.0][f]
-        p['squash'] = 1.0 - 0.08 * sp
-        p['arms'] = [(-92.0, ARM_LEN + 7 * sp), (92.0, ARM_LEN + 7 * sp)]
-        p['legs'] = [(-96.0 - 26 * sp, LEG_LEN + 2 * sp),
-                     (96.0 + 26 * sp, LEG_LEN + 2 * sp)]
+        p['arms'] = [(-88.0, ARM_LEN + 6 * sp), (88.0, ARM_LEN + 6 * sp)]
+        p['legs'] = [(-LEG_BACK + 26 * sp, LEG_LEN * 0.92),
+                     (LEG_BACK - 26 * sp, LEG_LEN * 0.92)]
         return p
     if name == 'header':
         # 목을 앞으로 내밀고 팔로 균형을 잡는다.
         push = [0.2, 1.0, 0.5][f]
-        p['lean'] = 3.6 * push
-        p['arms'] = [(-136.0 + 26 * push, ARM_LEN + 3),
-                     (136.0 - 26 * push, ARM_LEN + 3)]
-        p['legs'] = [(-124.0, LEG_LEN), (124.0, LEG_LEN)]
+        p['lean'] = 3.4 * push
+        p['arms'] = [(-128.0 + 24 * push, ARM_LEN + 2),
+                     (128.0 - 24 * push, ARM_LEN + 2)]
+        p['legs'] = [(-LEG_BACK - 4, LEG_LEN * 1.05), (LEG_BACK + 4, LEG_LEN * 1.05)]
         return p
     if name == 'deflect':
         # 몸에 맞고 튀는 순간. 팔을 접고 상체를 비튼다.
         t = [1.0, 0.5][f]
         p['lean'] = -1.6 * t
-        p['arms'] = [(-64.0, ARM_LEN - 4 * t), (146.0, ARM_LEN - 3 * t)]
-        p['legs'] = [(-130.0, LEG_LEN - 1), (108.0, LEG_LEN - 1)]
+        p['arms'] = [(-62.0, ARM_LEN - 3 * t), (140.0, ARM_LEN - 2 * t)]
+        p['legs'] = [(-LEG_BACK - 8 * t, LEG_LEN * 0.9), (LEG_BACK - 4 * t, LEG_LEN)]
         return p
     if name == 'gk-dive':
-        # 옆(-y)으로 몸을 날린다. 두 팔을 같은 쪽으로 모아 뻗고 다리는
-        # 반대쪽으로 끌린다. 실루엣이 한 축으로 길어진다.
+        # 옆(-y)으로 몸을 날린다. 팔은 모아 뻗고 다리는 반대쪽으로 끌린다.
         ext = [0.4, 1.0, 0.85][f]
-        p['squash'] = 1.0 - 0.32 * ext
-        p['arms'] = [(-100.0 + 10 * ext, ARM_LEN + 11 * ext),
-                     (-80.0 - 10 * ext, ARM_LEN + 11 * ext)]
-        p['legs'] = [(96.0, LEG_LEN + 7 * ext), (108.0, LEG_LEN + 6 * ext)]
+        p['squash'] = 1.0 - 0.28 * ext
+        p['arms'] = [(-98.0 + 10 * ext, ARM_LEN + 9 * ext),
+                     (-82.0 - 10 * ext, ARM_LEN + 9 * ext)]
+        p['legs'] = [(LEG_BACK - 40 * ext, LEG_LEN * (1 + 0.20 * ext)),
+                     (LEG_BACK - 16 * ext, LEG_LEN * (1 + 0.12 * ext))]
         return p
     if name == 'gk-claim':
         # 하이볼. 두 팔을 앞으로 모아 올린다.
         up = [0.5, 1.0][f]
         p['lean'] = 1.2 * up
-        p['arms'] = [(-40.0 + 16 * up, ARM_LEN + 7 * up),
-                     (40.0 - 16 * up, ARM_LEN + 7 * up)]
-        p['legs'] = [(-116.0, LEG_LEN - 2 * up), (116.0, LEG_LEN - 2 * up)]
+        p['arms'] = [(-38.0 + 14 * up, ARM_LEN + 6 * up),
+                     (38.0 - 14 * up, ARM_LEN + 6 * up)]
+        p['legs'] = [(-LEG_BACK + 8 * up, LEG_LEN * (1 - 0.12 * up)),
+                     (LEG_BACK - 8 * up, LEG_LEN * (1 - 0.12 * up))]
         return p
     if name == 'gk-punt':
-        sw = [-48.0, 58.0, 88.0][f]
+        sw = [168.0, 100.0, 36.0][f]
         p['lean'] = [-1.0, 1.6, 2.2][f]
-        p['legs'] = [(-112.0, LEG_LEN), (112.0 - sw, LEG_LEN + abs(sw) * 0.10)]
-        p['arms'] = [(-56.0, ARM_LEN + 3), (56.0, ARM_LEN + 3)]
+        p['legs'] = [(-LEG_BACK, LEG_LEN * 0.95),
+                     (sw, LEG_LEN * [1.08, 1.26, 1.18][f])]
+        p['arms'] = [(-52.0, ARM_LEN + 2), (52.0, ARM_LEN + 2)]
         return p
     raise ValueError('모르는 포즈: ' + name)
 
 
-# 이름과 장수. player-sprites.md 「프레임」과 같아야 한다.
-SHEET = [('idle', 1), ('walk', 4), ('run', 4), ('kick', 3), ('shoot', 3),
+# 일러스트를 셀로 옮기는 일은 sprite-import.py 가 한다 — 이 파일이
+# 500줄을 넘어서 나눴다.
+from sprite_import import IMPORTED, load_imported   # noqa: E402
+
+SHEET = [('idle', 1), ('walk', 4), ('run', 2), ('kick', 3), ('shoot', 3),
          ('charge', 1), ('tackle', 3), ('block', 2), ('header', 3),
          ('deflect', 2), ('gk-dive', 3), ('gk-claim', 2), ('gk-punt', 3)]
 
 
-SLEEVE = 4.2          # 반팔 길이. 여기서부터 팔은 맨살이다
+# ── 몸 비율 ─────────────────────────────────────────────────────────
+# 그림의 성격은 거의 전부 여기서 나온다. 포즈(각도)와 분리해 둔 이유는
+# 비율만 바꿔 다른 느낌을 시험하려면 각도를 건드리지 않아야 하기 때문이다.
+#
+#   shoulder_rx/ry  어깨 타원. 위에서 보면 앞뒤로 얕고 좌우로 넓다
+#   head_r/head_x   정수리 크기와 앞쪽 치우침
+#   hair_r/face     머리카락 원의 크기와 뒤로 밀린 정도. hair_r 0 이면
+#                   머리카락 없이 살색 점 하나 — 작게 그려질수록 이게 낫다
+#   arm_w/foot_w    팔·발 굵기
+#   sleeve          반팔 길이. 여기서부터 팔은 맨살
+#   outline         몸통 윤곽선 굵기. 0 이면 안 그린다
+STYLE = {
+    # 몸 축(+x)을 따라 앞에서 뒤로: 머리 → 어깨 → 몸통 → 반바지 → 다리
+    'head_x':15.0, 'head_r':5.4, 'hair_r':4.6, 'face':1.0,
+    'torso_x':2.0, 'torso_rx':9.0, 'torso_ry':8.2,
+    # 팔을 좌우 대칭 수직(±90)으로 두면 몸통을 관통하는 막대 하나로
+    # 보인다. 기본을 ±74 로 앞으로 기울여 두 팔로 읽히게 한다.
+    'shoulder_x':5.0, 'shoulder_y':8.6,
+    'shorts_x':-8.5, 'shorts_rx':4.6, 'shorts_ry':6.8,
+    'hip_x':-11.0, 'hip_y':4.2,
+    'arm_w':4.0, 'leg_w':6.0, 'boot_len':3.4, 'boot_w':4.4,
+    'sleeve':3.4, 'outline':1.2,
+}
 
 
 def joints(p):
-    """어깨·엉덩이 관절 위치. 사지는 몸통 가장자리에서 나와야 한다."""
-    lean = p['lean']
-    sh = 10.5 * p['squash']
-    return ([(lean + 1.0, -sh), (lean + 1.0, sh)],       # 어깨
-            [(lean - 5.0, -5.0), (lean - 5.0, 5.0)])     # 엉덩이
+    """어깨·엉덩이 관절. 사지는 몸통 가장자리에서 나와야 한다."""
+    S, lean, sq = STYLE, p['lean'], p['squash']
+    sy = S['shoulder_y'] * sq
+    return ([(lean + S['shoulder_x'], -sy), (lean + S['shoulder_x'], sy)],
+            [(lean + S['hip_x'], -S['hip_y'] * sq),
+             (lean + S['hip_x'], S['hip_y'] * sq)])
 
 
 def draw_cell(name, f, layer):
-    """포즈 한 장. layer 0 = 상의(어깨·소매), 1 = 머리·팔·발.
+    """포즈 한 장. layer 0 = 유니폼(상의·소매·반바지), 1 = 머리·팔·다리.
 
-    위에서 곧장 내려다본 그림이다. 보이는 것은 정수리와 어깨, 팔이고
-    다리는 어깨에 가려 발만 뒤로 삐져나온다. 그래서 어깨는 앞뒤로 얕고
-    좌우로 넓은 타원이다.
+    **위에서 비스듬히 뒤를 본 각도**다. 정수리만 보이는 수직 톱다운이
+    아니라, 머리 → 어깨(등번호) → 반바지 → 다리 → 축구화가 몸 축을 따라
+    늘어선다. 다리가 몸 길이의 절반을 차지하는 것이 이 각도의 핵심이고,
+    달릴 때 보폭이 실제로 보이는 이유다.
 
-    **팔은 상의가 아니라 맨살로 그린다.** 소매까지 팀 색으로 칠하면 팔이
-    몸통에 묻혀 실루엣이 덩어리 하나가 된다. 반팔 소매만 상의 줄에 두고
-    그 밖은 피부색이라, 어느 팀이든 팔의 각도가 읽힌다.
+    **팔·다리는 유니폼이 아니라 맨살·양말로 그린다.** 전부 팀 색으로
+    칠하면 몸통에 묻혀 실루엣이 덩어리 하나가 된다.
     """
+    S = STYLE
     pen = Pen(CELL * SS)
     p = pose(name, f)
     lean, sq = p['lean'], p['squash']
     sho, hip = joints(p)
 
     if layer == 1:
-        # 몸통 윤곽선을 먼저. 잔디와 맨팔 양쪽에서 상의를 떼어 놓는다.
-        pen.ellipse(lean, 0, 8.4, 13.0 * sq, None, outline=BOOT, ow=1.1)
-        # 발 — 짧고 굵은 점. 잔디 위에서 접지 위치를 알려준다.
+        # 다리 — 몸 뒤로 길게, 굵게. 끝에 밝은 축구화를 이어 붙인다.
+        # 어두운 원을 찍으면 막대에 공을 붙인 꼴이 된다. 축구화도 같은
+        # 방향으로 뻗은 짧은 캡슐이라야 발처럼 읽힌다.
         for (jx, jy), (ang, ln) in zip(hip, p['legs']):
-            pen.capsule(jx, jy, ang, ln, 4.2, BOOT)
-        # 맨팔 — 소매 끝에서 시작해 손까지.
+            ex, ey = pen.capsule(jx, jy, ang, ln, S['leg_w'], SOCK)
+            pen.capsule(ex, ey, ang, S['boot_len'], S['boot_w'], SHOE)
+        # 맨팔 — 소매 끝에서 손까지.
         for (jx, jy), (ang, ln) in zip(sho, p['arms']):
-            sx = jx + math.cos(deg(ang)) * SLEEVE
-            sy = jy + math.sin(deg(ang)) * SLEEVE
-            pen.capsule(sx, sy, ang, max(1.0, ln - SLEEVE), 3.4, SKIN)
-        # 머리. 뒤통수는 머리카락, 앞쪽에 얼굴이 초승달로 남아 어느 쪽을
-        # 보고 있는지 드러난다 — 회전만으로 방향을 내는 데 이게 단서다.
-        pen.ellipse(lean + 1.8, 0, 5.4, 5.4, SKIN)
-        pen.ellipse(lean + 0.4, 0, 4.4, 4.8, BOOT)
+            sx = jx + math.cos(deg(ang)) * S['sleeve']
+            sy = jy + math.sin(deg(ang)) * S['sleeve']
+            pen.capsule(sx, sy, ang, max(1.0, ln - S['sleeve']), S['arm_w'], SKIN)
+        # 상의 윤곽 — 잔디와 맨팔 양쪽에서 유니폼을 떼어 놓는다.
+        if S['outline'] > 0:
+            pen.ellipse(lean + S['torso_x'], 0, S['torso_rx'],
+                        S['torso_ry'] * sq, None, outline=BOOT, ow=S['outline'])
+        # 머리. 뒤통수는 머리카락, 앞쪽에 얼굴이 초승달로 남아 방향이 읽힌다.
+        hx = lean + S['head_x']
+        pen.ellipse(hx, 0, S['head_r'], S['head_r'], SKIN)
+        if S['hair_r'] > 0:
+            pen.ellipse(hx - S['face'], 0, S['hair_r'], S['hair_r'], HAIR)
         return pen.img
 
+    # 반바지 — 몸통 뒤. 상의와 같은 팀 색이라 윤곽으로만 나뉜다.
+    pen.ellipse(lean + S['shorts_x'], 0, S['shorts_rx'], S['shorts_ry'] * sq, SHIRT)
     # 소매는 어깨에서 짧게. 팔 각도의 시작점을 보여준다.
     for (jx, jy), (ang, _ln) in zip(sho, p['arms']):
-        pen.capsule(jx, jy, ang, SLEEVE, 5.0, SHIRT)
-    # 어깨 — 앞뒤로 얕고 좌우로 넓다.
-    pen.ellipse(lean, 0, 8.4, 13.0 * sq, SHIRT)
+        pen.capsule(jx, jy, ang, S['sleeve'], S['arm_w'] + 1.8, SHIRT)
+    # 상의 — 등번호가 얹히는 면이다. 제일 큰 색 덩어리여야 한다.
+    pen.ellipse(lean + S['torso_x'], 0, S['torso_rx'], S['torso_ry'] * sq, SHIRT)
     return pen.img
 
 
@@ -275,31 +332,71 @@ def build():
         index.append((name, col, n))
         for f in range(n):
             for layer in range(ROWS):
-                cell = draw_cell(name, f, layer).resize(
-                    (CELL, CELL), Image.LANCZOS)
+                if name in IMPORTED:
+                    got = load_imported(*IMPORTED[name])
+                    if len(got) != n:
+                        sys.exit('%s: 일러스트 %d프레임인데 SHEET 는 %d장'
+                                 % (name, len(got), n))
+                    cell = got[f][layer]
+                else:
+                    cell = draw_cell(name, f, layer).resize(
+                        (CELL, CELL), Image.LANCZOS)
                 check_fit(cell, '%s[%d] 줄%d' % (name, f, layer))
                 sheet.paste(cell, ((col + f) * CELL, layer * CELL))
         col += n
     return sheet, index
 
 
-def stamp_js(root, png_path):
-    """09-sprites.js 의 SPRITE_V 를 시트 내용 해시로 덮어쓴다."""
+def poses_literal(index):
+    """09-sprites.js 의 POSES 에 넣을 JS 객체 리터럴."""
+    parts = []
+    for name, col, n in index:
+        key = name if name.isalnum() else "'%s'" % name
+        parts.append('%s:[%d, %d]' % (key, col, n))
+    lines, cur = [], '  '
+    for part in parts:
+        piece = part + ','
+        if len(cur) + len(piece) > 74:
+            lines.append(cur.rstrip())
+            cur = '  '
+        cur += piece + ' '
+    lines.append(cur.rstrip().rstrip(','))
+    return '\n'.join(lines)
+
+
+def stamp_js(root, png_path, index):
+    """09-sprites.js 의 SPRITE_V·SPRITE_BODY·POSES 를 덮어쓴다.
+
+    SPRITE_BODY 는 셀 대비 몸통 **폭** 비율이다 (길이가 아니다 — 선수는
+    몸 축으로 길쭉하고, 충돌 반경에 맞출 것은 폭이다). STYLE 이나 ART 를
+    바꾸면 값이 달라지므로 손으로 맞추지 않는다.
+
+    POSES 까지 여기서 박는 이유는, 어느 포즈의 장수를 바꾸면 **그 뒤 모든
+    포즈의 시작 칸이 밀리기 때문**이다. 손으로 옮기면 옆 포즈나 빈 칸을
+    그리는데, 화면에는 그럴듯하게 나와서 알아채기 어렵다.
+    """
     js = os.path.join(root, 'games', 'soccer', 'js', '09-sprites.js')
     if not os.path.exists(js):
         return None
     with open(png_path, 'rb') as f:
         v = hashlib.sha256(f.read()).hexdigest()[:8]
+    body = round(2 * STYLE['torso_ry'] * ART / CELL, 4)
+
     with io.open(js, encoding='utf-8') as f:
         src = f.read()
-    out, n = re.subn(r"(const SPRITE_V = ')[0-9a-f]+(')",
-                     lambda m: m.group(1) + v + m.group(2), src)
-    if n != 1:
-        sys.exit('09-sprites.js 에서 SPRITE_V 를 %d 개 찾았습니다 (1개여야 함)' % n)
+    out, n1 = re.subn(r"(const SPRITE_V = ')[0-9a-f]+(')",
+                      lambda m: m.group(1) + v + m.group(2), src)
+    out, n2 = re.subn(r"(const SPRITE_BODY = )[0-9.]+(;)",
+                      lambda m: m.group(1) + repr(body) + m.group(2), out)
+    out, n3 = re.subn(r"const POSES = \{[^}]*\};",
+                      'const POSES = {\n' + poses_literal(index) + '\n};', out)
+    if n1 != 1 or n2 != 1 or n3 != 1:
+        sys.exit('09-sprites.js 치환 실패 — SPRITE_V %d, SPRITE_BODY %d, '
+                 'POSES %d (각각 1이어야 함)' % (n1, n2, n3))
     if out != src:
         with io.open(js, 'w', encoding='utf-8', newline='') as f:
             f.write(out)
-    return v
+    return v, body
 
 
 def main():
@@ -313,9 +410,10 @@ def main():
           % (os.path.relpath(path, root), sheet.width, sheet.height,
              sum(n for _, n in SHEET)))
     print('POSES = ' + ', '.join('%s:%d+%d' % (n, c, k) for n, c, k in index))
-    v = stamp_js(root, path)
-    if v:
-        print('SPRITE_V = %s  →  이어서 `node tools/soccer-sim.js --restamp`' % v)
+    stamped = stamp_js(root, path, index)
+    if stamped:
+        print('SPRITE_V = %s   SPRITE_BODY = %s' % stamped)
+        print('이어서 `node tools/soccer-sim.js --restamp`')
 
 
 if __name__ == '__main__':

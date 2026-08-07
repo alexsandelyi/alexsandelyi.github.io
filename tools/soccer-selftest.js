@@ -352,7 +352,7 @@ const SELF_TEST = `
           if (POSE_TIMER[poseName]) {
             poseTarget[POSE_TIMER[poseName][0]] = POSE_TIMER[poseName][1] * (1 - q);
           }
-          poseTarget.stride = q * STRIDE * count * 2;
+          poseTarget.stride = q * (POSE_STRIDE[poseName] || 7) * count * 2;
           ball.x = poseTarget.x + q * poseTarget.reach * 3;
           ball.y = poseTarget.y;
           hit[poseFrame(poseTarget, poseName)] = 1;

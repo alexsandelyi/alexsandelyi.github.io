@@ -78,9 +78,11 @@ function drawPlayer(p) {
     : (p.isGK ? C.gkAway : C.away);
   const r = drawRadius(R_PLAYER, DRAW_PLAYER_MIN_PX);
 
-  ctx.fillStyle = 'rgba(0,0,0,.32)';
-  ctx.beginPath(); ctx.ellipse(p.x + r * .18, p.y + r * .25,
-    r, r * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+  // 그림자. 스프라이트가 원보다 색 면적이 작아 예전 진하기로는 선수
+  // 옆에 붙은 별개 덩어리처럼 보였다.
+  ctx.fillStyle = 'rgba(0,0,0,.22)';
+  ctx.beginPath(); ctx.ellipse(p.x + r * .14, p.y + r * .18,
+    r * .92, r * .74, 0, 0, Math.PI * 2); ctx.fill();
 
   if (!drawPlayerSprite(p, r)) {
     // 시트를 아직 못 받았거나 아예 못 받는다. 원으로 계속 돌아간다 —
@@ -121,11 +123,20 @@ function drawPlayer(p) {
   ctx.save();
   ctx.translate(p.x, p.y);
   if (view.rot) ctx.rotate(Math.PI / 2);
-  // 스프라이트는 가운데가 머리라 어둡다. 원일 때는 팀 색이라 밝다.
-  ctx.fillStyle = spriteReady ? '#F2F7F4' : '#152528';
-  ctx.font = '700 ' + Math.max(7, r * 1.05) + 'px ' + bodyFont();
+  // 스프라이트 위에서는 번호가 선수를 통째로 덮지 않게 작게 쓰고,
+  // 어두운 테두리를 둘러 밝은 셔츠·잔디 어디서나 읽히게 한다.
+  const fs = Math.max(7, r * (spriteReady ? .82 : 1.05));
+  ctx.font = '700 ' + fs + 'px ' + bodyFont();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(p.isGK ? 'GK' : String(p.no), 0, 1);
+  const label = p.isGK ? 'GK' : String(p.no);
+  if (spriteReady) {
+    ctx.strokeStyle = 'rgba(12,18,20,.85)';
+    ctx.lineWidth = Math.max(1.5, fs * .28);
+    ctx.lineJoin = 'round';
+    ctx.strokeText(label, 0, 1);
+  }
+  ctx.fillStyle = spriteReady ? '#F7FBF8' : '#152528';
+  ctx.fillText(label, 0, 1);
   ctx.restore();
 }
 
