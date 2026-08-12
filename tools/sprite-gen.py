@@ -39,10 +39,20 @@ ROWS = 2           # 0 = 상의(틴트 대상), 1 = 머리·다리·윤곽
 # build() 가 매 셀을 check_fit() 으로 검사하므로 짐작하지 않아도 된다.
 ART = 0.88
 
-SHIRT = (255, 255, 255, 255)      # 흰색으로 굽고 런타임에 팀 색을 입힌다
-SKIN = (214, 160, 118, 255)       # 팔·얼굴. 상의와 대비돼야 사지가 읽힌다
-HAIR = (38, 32, 30, 255)          # 뒤통수. 앞쪽 살색 초승달이 방향 단서다
-SOCK = (44, 50, 58, 255)          # 다리(양말). 잔디보다 어둡다
+# 색은 손 일러스트(tools/sprite-src/)에서 실측해 맞췄다. 벡터 포즈가
+# 일러스트와 섞여 있으므로 값이 다르면 포즈가 바뀔 때 눈에 띈다.
+#
+# 유니폼 줄(0줄)은 **회색조**다 — 런타임에서 multiply 로 팀 색을 곱한다.
+# 255 면 팀 색 그대로, 낮출수록 어두워진다. 상의보다 양말·반바지를 조금
+# 어둡게 둬 일러스트의 명암 느낌을 흉내 낸다.
+# 값은 일러스트에 맞춰 낮췄다. 순백(255)으로 두면 팀 색이 그대로 나와
+# 일러스트(음영 때문에 평균 171)보다 훨씬 밝고, 킥·태클로 바뀌는 순간
+# 선수가 번쩍인다. 세 값을 0.72 배 해 평균을 맞췄다.
+SHIRT = (183, 183, 183, 255)      # 상의
+SHORTS = (166, 166, 166, 255)     # 반바지 — 상의보다 살짝 어둡게
+SOCK = (148, 148, 148, 255)       # 양말 — **팀 색이다.** 일러스트도 파란 양말
+SKIN = (248, 192, 136, 255)       # 팔·얼굴. 일러스트 실측값
+HAIR = (24, 32, 32, 255)          # 뒤통수. 일러스트 실측값
 BOOT = (22, 24, 28, 255)          # 윤곽선. 제일 어두운 값
 SHOE = (236, 240, 244, 255)       # 축구화. 밝아야 발끝이 어디인지 보인다
 
@@ -278,11 +288,12 @@ def draw_cell(name, f, layer):
     sho, hip = joints(p)
 
     if layer == 1:
-        # 다리 — 몸 뒤로 길게, 굵게. 끝에 밝은 축구화를 이어 붙인다.
-        # 어두운 원을 찍으면 막대에 공을 붙인 꼴이 된다. 축구화도 같은
-        # 방향으로 뻗은 짧은 캡슐이라야 발처럼 읽힌다.
+        # 축구화만 여기. 양말은 팀 색이라 0줄에 있다.
+        # 어두운 원을 찍으면 막대에 공을 붙인 꼴이 되므로, 축구화도 다리와
+        # 같은 방향으로 뻗은 짧은 캡슐이라야 발처럼 읽힌다.
         for (jx, jy), (ang, ln) in zip(hip, p['legs']):
-            ex, ey = pen.capsule(jx, jy, ang, ln, S['leg_w'], SOCK)
+            ex = jx + math.cos(deg(ang)) * ln
+            ey = jy + math.sin(deg(ang)) * ln
             pen.capsule(ex, ey, ang, S['boot_len'], S['boot_w'], SHOE)
         # 맨팔 — 소매 끝에서 손까지.
         for (jx, jy), (ang, ln) in zip(sho, p['arms']):
@@ -300,8 +311,12 @@ def draw_cell(name, f, layer):
             pen.ellipse(hx - S['face'], 0, S['hair_r'], S['hair_r'], HAIR)
         return pen.img
 
-    # 반바지 — 몸통 뒤. 상의와 같은 팀 색이라 윤곽으로만 나뉜다.
-    pen.ellipse(lean + S['shorts_x'], 0, S['shorts_rx'], S['shorts_ry'] * sq, SHIRT)
+    # 양말 — **팀 색이다.** 일러스트도 파란 양말이라 여기 있어야 색이 맞는다.
+    # 회색조로 그려두면 런타임 multiply 가 팀 색을 입힌다.
+    for (jx, jy), (ang, ln) in zip(hip, p['legs']):
+        pen.capsule(jx, jy, ang, ln, S['leg_w'], SOCK)
+    # 반바지 — 몸통 뒤. 상의보다 살짝 어둡게 해 경계를 만든다.
+    pen.ellipse(lean + S['shorts_x'], 0, S['shorts_rx'], S['shorts_ry'] * sq, SHORTS)
     # 소매는 어깨에서 짧게. 팔 각도의 시작점을 보여준다.
     for (jx, jy), (ang, _ln) in zip(sho, p['arms']):
         pen.capsule(jx, jy, ang, S['sleeve'], S['arm_w'] + 1.8, SHIRT)

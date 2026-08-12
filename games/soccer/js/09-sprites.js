@@ -7,7 +7,7 @@
 // 만든다. **시트를 다시 만들면 SPRITE_V 가 자동으로 갱신되고, 그러면
 // js/ 해시가 바뀌므로 `node tools/soccer-sim.js --restamp` 를 돌려야 한다.**
 
-const SPRITE_V = '1026a22e';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
+const SPRITE_V = 'e49d07e8';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
 const SPRITE_CELL = 64;
 // 셀 대비 몸(어깨) 지름. 그리기 크기를 몸 기준으로 맞추는 데 쓴다 —
 // 셀 기준으로 맞추면 팔다리 여백까지 세어 선수가 작아 보인다.
