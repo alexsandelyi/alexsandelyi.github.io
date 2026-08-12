@@ -14,6 +14,7 @@ import sys
 
 from PIL import Image
 
+
 SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sprite-src')
 
 # 셀 한 변(px). sprite-gen.py 와 같아야 한다.
@@ -86,6 +87,21 @@ def _split_layers(src):
     return shirt, detail, widest
 
 
+def _fit(shirt, detail, kit_w, flip):
+    """층 한 쌍을 어깨 폭 기준으로 셀에 앉힌다."""
+    k = KIT_W / kit_w
+    pair = []
+    for layer in (shirt, detail):
+        img = layer.transpose(Image.FLIP_LEFT_RIGHT) if flip else layer
+        img = img.transpose(Image.ROTATE_270)          # 위 → +x
+        img = img.resize((max(1, int(round(img.width * k))),
+                          max(1, int(round(img.height * k)))), Image.LANCZOS)
+        cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
+        cell.paste(img, ((CELL - img.width) // 2, (CELL - img.height) // 2))
+        pair.append(cell)
+    return pair
+
+
 def load_imported(files, mirror):
     """일러스트들을 셀 크기의 (유니폼, 나머지) 쌍 목록으로 돌려준다."""
     key = (tuple(files), mirror)
@@ -95,20 +111,8 @@ def load_imported(files, mirror):
     for fname in files:
         src = Image.open(os.path.join(SRC_DIR, fname)).convert('RGBA')
         shirt, detail, kit_w = _split_layers(src)
-        k = KIT_W / kit_w                      # 어깨 폭을 기준으로 맞춘다
         for flip in ((False, True) if mirror else (False,)):
-            pair = []
-            for layer in (shirt, detail):
-                img = layer.transpose(Image.FLIP_LEFT_RIGHT) if flip else layer
-                img = img.transpose(Image.ROTATE_270)      # 위 → +x
-                img = img.resize((max(1, int(round(img.width * k))),
-                                  max(1, int(round(img.height * k)))),
-                                 Image.LANCZOS)
-                cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
-                cell.paste(img, ((CELL - img.width) // 2,
-                                 (CELL - img.height) // 2))
-                pair.append(cell)
-            frames.append(pair)
+            frames.append(_fit(shirt, detail, kit_w, flip))
     _imported_cache[key] = frames
     return frames
 
