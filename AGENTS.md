@@ -1,8 +1,9 @@
 # 일빵 게임 런처 — Codex 작업 규칙
 
 이 파일은 저장소 루트와 모든 하위 경로에 적용한다.  
-프로젝트는 정적 사이트이며 GitHub Pages의 `main` 브랜치 루트에서
-`https://alexsandelyi.github.io/`로 배포된다.
+프로젝트는 정적 사이트이며 GitHub Pages의 `main` 브랜치 루트에서 배포된다.
+기본 주소는 `https://alexsandelyi.github.io/`이고, 루트 `CNAME` 파일로
+커스텀 도메인 `ilbbang.com`을 지정한다.
 
 ## 최우선 원칙
 
@@ -46,7 +47,8 @@
 | `assets/clickable-v2/` | 현재 사용하는 클릭 글자 WebP 8개 |
 | `assets/lettering-v1/` | 현재 사용하는 제목 글자 WebP 3개 |
 | `assets/clickable-v1/` | 미참조 구버전. 배포 대상이 아님 |
-| `app-ads.txt` | AdMob 인증 파일. 루트 위치를 유지하며 삭제 금지 |
+| `app-ads.txt` | AdMob 인증 파일. 루트 위치를 유지하며 삭제 금지. 도메인 변경 시 AdMob 콘솔의 개발자 사이트 주소도 함께 변경 |
+| `CNAME` | 커스텀 도메인 `ilbbang.com`. 삭제하면 도메인이 해제된다 |
 | `games/soccer/` | 의존성 없는 Canvas 2D 축구 게임 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 순서 로드. 파일당 500줄 이하 |
 | `games/soccer/assets/players.png` | 선수 스프라이트 시트 32장. `tools/sprite-gen.py` 산출물. 손으로 고치지 않음 |

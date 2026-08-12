@@ -1,6 +1,9 @@
 # 일빵 게임 런처 — 작업 지침
 
-정적 사이트. GitHub Pages(`main` 브랜치 루트)로 https://alexsandelyi.github.io/ 에 배포된다.
+정적 사이트. GitHub Pages(`main` 브랜치 루트)로 배포된다.
+
+- 기본 주소 https://alexsandelyi.github.io/ (저장소 `alexsandelyi/alexsandelyi.github.io`, 사용자 사이트)
+- 커스텀 도메인 **ilbbang.com** — 루트 `CNAME` 파일로 지정. 아직 push 전이면 적용되지 않는다.
 
 ## 배포 전에 반드시 확인받는다
 
@@ -10,6 +13,32 @@
 
 <!-- 이 파일은 참고용 컨텍스트이고 강제되지 않는다. 확실히 막으려면
      .claude/settings.json 의 permissions 로 git push 를 ask 처리해야 한다. -->
+
+## 커스텀 도메인 ilbbang.com
+
+루트 `CNAME` 파일(`ilbbang.com` 한 줄)이 도메인을 지정한다. **push 하기
+전까지는 아무 효과가 없다.**
+
+DNS 는 도메인 등록처에 걸어야 한다 (GitHub Pages 사용자 사이트 기준).
+
+| 종류 | 이름 | 값 |
+|---|---|---|
+| A | `@` | `185.199.108.153` `185.199.109.153` `185.199.110.153` `185.199.111.153` |
+| AAAA (선택) | `@` | `2606:50c0:8000::153` ~ `:8003::153` |
+| CNAME | `www` | `alexsandelyi.github.io` |
+
+**웹 UI 에서 도메인을 설정하지 않는다.** GitHub 이 `main` 에 CNAME 커밋을
+직접 만들어 로컬과 갈라진다. 파일을 push 하면 Pages 가 알아서 읽는다.
+
+전환할 때 빠뜨리기 쉬운 것:
+
+1. **AdMob 콘솔의 개발자 사이트 주소를 `ilbbang.com` 으로 바꾼다.** 구글은
+   그 주소에서 `/app-ads.txt` 를 크롤링한다. 안 바꾸면 인증이 풀린다.
+2. 인증서가 발급된 뒤 Settings → Pages 에서 **Enforce HTTPS** 를 켠다.
+3. 라이브에서 `/`, `/app-ads.txt`, `/games/soccer/` 응답 코드를 확인한다.
+
+사이트 코드에는 절대 URL 이 하나도 없다(전부 상대경로). 도메인이 바뀌어도
+링크·자산은 그대로 동작한다.
 
 ## 축구 게임은 완성 후 한 번에 공개한다
 
@@ -33,7 +62,8 @@
 | `일빵-런처-확정안.html` | 작업 원본. git 추적 제외 |
 | `assets/clickable-v2/` (8개), `assets/lettering-v1/` (3개) | `index.html` 이 상대경로로 참조 — 함께 배포해야 한다 |
 | `assets/clickable-v1/` | 미참조 구버전. gitignore |
-| `app-ads.txt` | AdMob 인증. **도메인 루트에 있어야 하므로 지우면 안 된다** |
+| `app-ads.txt` | AdMob 인증. **도메인 루트에 있어야 하므로 지우면 안 된다.** 도메인을 바꾸면 AdMob 콘솔의 개발자 사이트 주소도 함께 바꿔야 인증이 유지된다 |
+| `CNAME` | 커스텀 도메인 `ilbbang.com`. **지우면 도메인이 조용히 풀린다** |
 | `games/soccer/` | 동네 축구 11v11. 의존성 없는 Canvas 2D |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
 | `games/soccer/assets/players.png` | 선수 스프라이트 시트 32장. `tools/sprite-gen.py` 산출물 — 손으로 고치지 않는다 |
@@ -42,6 +72,7 @@
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
 | `tmp/` | 패치 스크립트와 번들 추출물. gitignore |
 | `.nojekyll` | Jekyll 우회. 이게 없을 때 Pages 빌드가 실패한 이력이 있다 |
+| `tools/sprite-src/` | 손으로 그린 원본 일러스트. 이게 진짜 원본이다 (내려받기 폴더가 아니라) |
 
 `index.html` 은 자립형이 **아니다**. 폰트·JS 는 파일 안에 박혀 있지만 위 이미지 11개는 외부 참조다.
 
