@@ -293,7 +293,13 @@ function pickControlled(teamIdx) {
   if (cur.isGK) { ctrl[teamIdx] = best; return; }
   const dCur = Math.hypot(ball.x - cur.x, ball.y - cur.y);
   const dBest = best ? Math.hypot(ball.x - best.x, ball.y - best.y) : Infinity;
-  if (best && best !== cur && dBest < dCur - 90) ctrl[teamIdx] = best;
+  if (best && best !== cur && dBest < dCur - 90) {
+    ctrl[teamIdx] = best;
+    // 바뀐 직후에는 잠깐 다시 안 바꾼다. 거리 90 의 히스테리시스만으로는
+    // 달리는 도중 조작 대상이 넘어가는 것을 못 막는다 — 몰던 선수는 AI 가
+    // 되고 새 선수는 정지 상태라 입력이 통째로 씹힌 것처럼 느껴진다.
+    ctrlLock[teamIdx] = AUTO_SWITCH_LOCK;
+  }
 }
 
 function cycleControlled(teamIdx) {

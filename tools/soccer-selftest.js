@@ -336,6 +336,29 @@ const SELF_TEST = `
       var recordsSummary = summaryText.indexOf('60%') >= 0 &&
         summaryText.indexOf('7/3') >= 0 && summaryText.indexOf('2/1') >= 0;
 
+      // ── 방향 전환 제동 ────────────────────────────────────────────
+      // 입력과 어긋난 속도 성분만 깎는다. 직진은 영향이 없어야 하고,
+      // 반전은 제동이 없을 때(약 1.5초)보다 확실히 빨라야 한다.
+      var turner = teams[0][8];
+      turner.x = FW / 2; turner.y = FH / 2;
+
+      turner.vx = SPEED_RUN; turner.vy = 0;
+      for (var tb = 0; tb < 30; tb++) movePlayer(turner, 1, 0, 1 / 60, SPEED_RUN);
+      var straightRunUnaffected = Math.abs(turner.vx - SPEED_RUN) < SPEED_RUN * 0.02
+        && Math.abs(turner.vy) < 1;
+
+      // 반전은 0.4초 안에 **방향이 바뀌어야** 한다. 제동이 없으면 그 시점에
+      // 아직 앞으로(+51) 가고 있다. 최고 속도까지 도달하는 시간은 여전히
+      // P_ACCEL 이 정하므로 여기서 보지 않는다 — 그건 실제 가속이다.
+      turner.vx = SPEED_RUN; turner.vy = 0;
+      for (var tr = 0; tr < 24; tr++) movePlayer(turner, -1, 0, 1 / 60, SPEED_RUN);
+      var turnBrakeReverses = turner.vx < 0;
+
+      turner.vx = SPEED_RUN; turner.vy = 0;
+      for (var tp = 0; tp < 24; tp++) movePlayer(turner, 0, 1, 1 / 60, SPEED_RUN);
+      var turnBrakeKillsDrift = Math.abs(turner.vx) < SPEED_RUN * 0.35;
+      turner.vx = turner.vy = 0;
+
       // ── 스프라이트 포즈 ────────────────────────────────────────────
       // 장수가 2 이상인 포즈는 모든 프레임에 도달할 수 있어야 한다.
       // 진행도를 낼 근거(poseT / 게임 타이머 / 보폭)가 없으면 프레임 0 에
@@ -403,6 +426,9 @@ const SELF_TEST = `
         leagueRanking:leagueRanking, seasonValid:seasonValid,
         leagueCompleted:leagueCompleted, seasonToCup:seasonToCup,
         recordsSummary:recordsSummary,
+        straightRunUnaffected:straightRunUnaffected,
+        turnBrakeReverses:turnBrakeReverses,
+        turnBrakeKillsDrift:turnBrakeKillsDrift,
         poseFramesReachable:poseFramesReachable,
         poseUnreachableList:poseUnreachable.join(',') || true,
         poseSlotsValid:poseSlotsValid

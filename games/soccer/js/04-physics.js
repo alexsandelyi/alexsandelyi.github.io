@@ -6,6 +6,9 @@
 // ── 물리 ───────────────────────────────────────────────────────────
 // 경기장이 1v1 판(1000x620)의 2배 이상이라 속도도 그만큼 올렸다.
 const P_ACCEL = 150, P_MAX = 190, P_FRICTION = 4;
+// 방향 전환 제동 계수. 시간상수 1/6 = 0.17초 — 어긋난 속도 성분이 그만큼
+// 만에 절반 이하로 줄어든다. brakeTurn() 참조.
+const P_BRAKE = 6;
 const B_MAX = 800;
 
 // 공 감속은 두 항의 합이다 — 잔디 구름 저항(속도 무관 상수) + 공기 저항
@@ -52,6 +55,9 @@ const TACKLE_TRIGGER = 32, SHOT_BLOCK_REACH = 36;
 // 태클·블록이 유지되는 시간. 09-sprites.js 가 프레임을 고를 때도 쓰므로
 // 리터럴로 흩뿌리지 않는다.
 const TACKLE_T = 0.22, BLOCK_T = 0.25;
+// 조작 대상이 **자동으로** 바뀐 뒤 다시 안 바꾸는 시간. 수동 전환(`[`)의
+// 1.2초보다 짧다 — 공을 놓쳤을 때 따라붙는 건 빨라야 하기 때문이다.
+const AUTO_SWITCH_LOCK = 0.45;
 const OPPONENT_SPEED_MUL = [1, 1, 1];
 // 평소에는 라인 초과분을 되돌리되, 공을 소유한 동안 FW가 짧은 침투
 // 구간을 갖는다. 어려울수록 구간이 짧고 드물어 라인을 더 잘 지킨다.
@@ -63,9 +69,30 @@ const AI_ACTION_RATE = 0.88;
 // 쉬움≥보통≥어려움이며 한 값으로 슛·태클·GK 범위를 함께 조절한다.
 const HUMAN_ASSIST = [1.00, 0.35, 0];
 
+// 방향 전환 제동. 입력 방향으로 **가지 않는** 속도 성분만 깎는다.
+//
+// 이게 없으면 감속이 「입력이 없을 때」만 걸려서, 방향을 바꾸는 동안에는
+// 브레이크가 아예 없고 가속도 하나로 관성을 이겨야 한다. 그래서 좌우
+// 반전에 1.5초, 90° 꺾음에 반경 4m 의 호가 나왔다.
+//
+// 현실에서는 방향을 바꿀 때 발로 땅을 밀어 **적극적으로 제동한다.**
+// 빠진 항을 채우는 것이지 속도를 올리는 게 아니다 — 직진 중에는
+// 어긋난 성분이 0 이라 아무 영향이 없고, 최고 속도도 그대로다.
+function brakeTurn(p, ax, ay, dt) {
+  const along = p.vx * ax + p.vy * ay;      // 입력 방향 성분(부호 있음)
+  const perpX = p.vx - along * ax;          // 옆으로 흐르는 성분
+  const perpY = p.vy - along * ay;
+  const f = Math.exp(-P_BRAKE * dt);
+  // 뒤로 가는 성분(along < 0)과 옆 성분만 깎는다. 앞으로 가는 성분은 둔다.
+  const keep = along >= 0 ? along : along * f;
+  p.vx = keep * ax + perpX * f;
+  p.vy = keep * ay + perpY * f;
+}
+
 function movePlayer(p, ax, ay, dt, maxSpeed = P_MAX) {
   const m = Math.hypot(ax, ay);
   if (m > 0.001) { ax /= m; ay /= m; }
+  if (m > 0.001) brakeTurn(p, ax, ay, dt);
   p.vx += ax * P_ACCEL * dt;
   p.vy += ay * P_ACCEL * dt;
   if (m < 0.01) { const f = Math.exp(-P_FRICTION * dt); p.vx *= f; p.vy *= f; }
