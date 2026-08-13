@@ -11,7 +11,9 @@
 아무 동작도 없고 글 목록도 더미다. **거기에 기능을 넣으면 안 된다** —
 번들은 외부 도구가 재생성하므로 손으로 넣은 코드는 다음 재생성 때 사라진다
 (루트 `CLAUDE.md`). `games/soccer/` 와 같이 번들 밖 독립 페이지로 만들고,
-런처의 「커뮤니티」 버튼 연결만 `tmp/patch-*.js` 로 처리한다.
+런처의 버튼 연결만 `tmp/patch-community.js` 로 처리한다 — 「글 쓰기」를
+`<a href="community/">` 로 바꾼다. `<button>`+onClick 이 아니라 링크라야
+새 탭 열기·가운데 클릭·주소 복사가 동작한다.
 
 ## 구조
 
@@ -161,7 +163,8 @@ node worker/test.mjs
 4. `POST /api/posts` + Turnstile + 속도 제한 + 서버 검증
 5. 글 비밀번호로 수정·삭제, 신고
 6. `api.ilbbang.com` 연결, CORS 확인
-7. 런처 「커뮤니티」 버튼 연결 (`tmp/patch-*.js`)
+7. ~~런처 버튼 연결~~ — **완료.** `tmp/patch-community.js` 가 「글 쓰기」를
+   `community/` 링크로 바꾼다
 
 ## 검증
 
