@@ -140,6 +140,19 @@ Turnstile 비밀키, IP 소금값은 전부 `wrangler secret put` 으로 Cloudfl
   빈 화면만 나오면 원인을 알 수 없다
 - 작성은 목록 위의 「글 쓰기」로 연다
 
+## Worker 검증 — 배포 없이 돈다
+
+`worker/test.mjs` 가 **진짜 스키마 위에서 fetch 핸들러를 통째로** 돌린다.
+D1 대신 Node 내장 `node:sqlite` 를 쓰고 `prepare/bind/all/first/run/batch`
+만 얇게 흉내 낸다 — SQL·라우팅·검증·권한 로직은 배포될 코드 그대로다.
+
+```bash
+node worker/test.mjs
+```
+
+46항목. 페이지네이션, 내부 열 유출, 서버측 입력 검증, 비밀번호 수정·삭제,
+시도 횟수 차단, 연속 작성 제한, 신고, 라우팅·CORS, SQL 주입까지 본다.
+
 ## 만드는 순서
 
 1. D1 만들고 스키마 넣기 — 로컬에서 `wrangler d1 execute --local` 로 확인

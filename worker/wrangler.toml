@@ -1,0 +1,30 @@
+name = "ilbbang-community"
+main = "src/index.js"
+compatibility_date = "2026-08-13"
+
+# D1 바인딩. database_id 는 `npx wrangler d1 create ilbbang-community` 가
+# 출력하는 값을 넣는다. 이 값은 비밀이 아니라 식별자라 저장소에 있어도 된다.
+[[d1_databases]]
+binding = "DB"
+database_name = "ilbbang-community"
+database_id = "여기에-d1-create-가-준-id-를-넣는다"
+
+# 비밀이 아닌 설정만 여기 둔다.
+[vars]
+ALLOW_ORIGIN = "https://ilbbang.com"
+# 같은 사람이 글을 연달아 올릴 수 있는 최소 간격(초).
+POST_COOLDOWN_SEC = "60"
+# 비밀번호를 틀릴 수 있는 횟수와 그 창(초).
+PW_TRY_LIMIT = "5"
+PW_TRY_WINDOW_SEC = "600"
+
+# ── 비밀값은 여기 적지 않는다 ──────────────────────────────────────
+# 이 저장소는 Public 이다. 아래는 `wrangler secret put` 으로 넣는다.
+#
+#   npx wrangler secret put PEPPER          # 비밀번호 해시용 후추값
+#   npx wrangler secret put IP_SALT         # IP 해시용 소금값
+#   npx wrangler secret put ADMIN_PW        # 관리자 삭제 비밀번호
+#   npx wrangler secret put TURNSTILE_SECRET
+#
+# PEPPER 와 IP_SALT 는 길고 무작위여야 한다. 예:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
