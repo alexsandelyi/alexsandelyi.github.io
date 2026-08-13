@@ -55,7 +55,15 @@ function fakeList(page) {
   };
 }
 
-function fakeCreate(input) {
+// 가짜 저장소도 비밀번호를 **해시로** 들고 확인한다. 평문으로 두면
+// localStorage 를 열어보는 것만으로 남의 글을 지울 수 있고, 틀린 비밀번호
+// 경로를 시험할 수도 없다. (진짜 확인은 Worker 가 소금·후추와 함께 한다)
+async function fakeHash(pw) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('fake:' + pw));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function fakeCreate(input) {
   const rows = fakeLoad();
   const id = rows.reduce((m, p) => Math.max(m, p.id), 0) + 1;
   const post = {
@@ -66,9 +74,22 @@ function fakeCreate(input) {
     created_at: Date.now(),
     deleted: 0
   };
-  rows.push(post);
+  rows.push({ ...post, pw_hash: await fakeHash(input.pw) });
   fakeSave(rows);
-  return post;
+  return post;                        // 해시는 돌려주지 않는다
+}
+
+async function fakeRemove(id, pw) {
+  const rows = fakeLoad();
+  const row = rows.find(p => p.id === id && !p.deleted);
+  if (!row) throw new ApiError('글을 찾을 수 없습니다', 404);
+  if (row.pw_hash !== await fakeHash(pw)) {
+    throw new ApiError('비밀번호가 맞지 않습니다', 403);
+  }
+  // 지우지 않고 표시만 한다 — 진짜 서버와 같은 방식.
+  row.deleted = 1;
+  fakeSave(rows);
+  return { ok: true, id };
 }
 
 // ── 공통 ────────────────────────────────────────────────────────────
@@ -130,8 +151,25 @@ const Api = {
     });
   },
 
+  // 글 비밀번호(또는 관리자 비밀번호)로 지운다. 로그인이 없으므로 이게
+  // 본인이 자기 글을 지우는 유일한 수단이다.
+  async remove(id, pw) {
+    if (!pw) throw new ApiError('비밀번호를 입력하세요', 400);
+    if (!API_BASE) {
+      await new Promise(r => setTimeout(r, 120));
+      return fakeRemove(id, pw);
+    }
+    return request('/api/posts/' + id, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pw })
+    });
+  },
+
   // 가짜 저장소에 시험용 글을 채운다. 화면 검증에만 쓴다.
-  _seed(n) {
+  // 비밀번호는 전부 '1234' 로 둔다 — 삭제까지 시험할 수 있게.
+  async _seed(n) {
+    const hash = await fakeHash('1234');
     const rows = [];
     for (let i = 1; i <= n; i++) {
       rows.push({
@@ -140,7 +178,8 @@ const Api = {
         body: '내용 ' + i,
         author: i % 3 === 0 ? '익명' : '사용자' + i,
         created_at: Date.now() - (n - i) * 60000,
-        deleted: 0
+        deleted: 0,
+        pw_hash: hash
       });
     }
     fakeSave(rows);

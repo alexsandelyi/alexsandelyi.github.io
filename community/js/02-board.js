@@ -143,26 +143,99 @@ function cbMakeDialog(onDone) {
 //
 // 본문은 textContent 로 넣고 줄바꿈은 CSS(white-space:pre-wrap)로 살린다.
 // <br> 로 바꿔 innerHTML 에 넣으면 그 순간 XSS 가 열린다.
-function cbMakeViewDialog() {
+//
+// 삭제도 여기서 한다. 로그인이 없으므로 글을 쓸 때 정한 비밀번호가 본인이
+// 자기 글을 지우는 **유일한 수단**이다. 이게 없으면 한번 올린 글을 아무도
+// 못 지운다.
+function cbMakeViewDialog(onDeleted) {
   const dlg = cbEl('dialog', 'cb-dlg cb-view');
   const box = cbEl('div', 'cb-form');
   const title = cbEl('h2', 'cb-view-title');
   const meta = cbEl('p', 'cb-view-meta');
   const body = cbEl('div', 'cb-view-body');
+
+  // 삭제 확인 줄. 평소에는 접어 둔다 — 늘 펴 두면 실수로 지우기 쉽고,
+  // 읽으러 온 사람에게 비밀번호 칸부터 보이는 것도 이상하다.
+  const confirm = cbEl('div', 'cb-del');
+  const uid = 'cbd' + Math.random().toString(36).slice(2, 8);
+  const pwLab = cbEl('label', null, '비밀번호 ');
+  pwLab.htmlFor = uid;
+  const pw = cbEl('input'); pw.id = uid; pw.type = 'password';
+  pw.autocomplete = 'off';
+  const doDel = cbEl('button', 'cb-btn cb-btn-danger', '삭제');
+  doDel.type = 'button';
+  const noDel = cbEl('button', 'cb-btn cb-btn-quiet', '취소');
+  noDel.type = 'button';
+  const row = cbEl('div', 'cb-del-row');
+  row.append(pw, doDel, noDel);
+  confirm.append(pwLab, row);
+  confirm.hidden = true;
+
+  const err = cbEl('p', 'cb-err'); err.hidden = true;
+
   const actions = cbEl('div', 'cb-actions');
+  const del = cbEl('button', 'cb-btn cb-btn-quiet cb-del-open', '삭제');
+  del.type = 'button';
   const close = cbEl('button', 'cb-btn cb-btn-quiet', '닫기');
   close.type = 'button';
-  actions.append(close);
-  box.append(title, meta, body, actions);
+  actions.append(del, close);
+  box.append(title, meta, body, confirm, err, actions);
   dlg.append(box);
   document.body.append(dlg);
 
-  close.addEventListener('click', () => dlg.close());
+  let cur = null;
+  let sending = false;
+  const setErr = m => { err.textContent = m || ''; err.hidden = !m; };
+
+  function fold() {
+    confirm.hidden = true;
+    del.hidden = false;
+    pw.value = '';
+    setErr('');
+  }
+
+  del.addEventListener('click', () => {
+    confirm.hidden = false;
+    del.hidden = true;
+    pw.focus();
+  });
+  noDel.addEventListener('click', () => { if (!sending) { fold(); del.focus(); } });
+
+  async function remove() {
+    if (sending || !cur) return;
+    if (!pw.value) { setErr('비밀번호를 입력하세요'); pw.focus(); return; }
+    setErr('');
+    sending = true;
+    doDel.disabled = true;
+    doDel.textContent = '지우는 중…';
+    try {
+      await Api.remove(cur.id, pw.value);
+      dlg.close();
+      onDeleted();
+    } catch (ex) {
+      // 틀린 비밀번호면 창을 닫지 않는다 — 다시 칠 수 있어야 한다.
+      setErr(ex.message || '지우지 못했습니다');
+      pw.select();
+    } finally {
+      sending = false;
+      doDel.disabled = false;
+      doDel.textContent = '삭제';
+    }
+  }
+
+  doDel.addEventListener('click', remove);
+  // 비밀번호 칸에서 Enter — 폼이 아니라서 브라우저가 해주지 않는다.
+  pw.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); remove(); } });
+
+  close.addEventListener('click', () => { if (!sending) dlg.close(); });
   // 배경을 눌러도 닫히게 한다. <dialog> 는 기본으로 안 닫힌다.
-  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg && !sending) dlg.close(); });
+  dlg.addEventListener('cancel', e => { if (sending) e.preventDefault(); });
 
   return {
     open(p) {
+      cur = p;
+      fold();
       title.textContent = p.title;
       const when = cbTime(p.created_at) +
         (p.updated_at ? ' (수정 ' + cbTime(p.updated_at) + ')' : '');
@@ -188,7 +261,9 @@ function createBoard(opts) {
   let page = 1;
 
   const dialog = cbMakeDialog(() => load(1));   // 새 글은 맨 앞이므로 1페이지
-  const viewer = cbMakeViewDialog();
+  // 지운 뒤에는 보던 페이지를 다시 부른다. 마지막 글을 지워 그 페이지가
+  // 사라지면 서버가 마지막 페이지로 당겨주고 load() 가 주소를 맞춘다.
+  const viewer = cbMakeViewDialog(() => load(page));
 
   function setCount(t) { if (countEl) countEl.textContent = t; }
   function clearPager() { if (pagerEl) pagerEl.replaceChildren(); }

@@ -59,6 +59,10 @@
 .cb-btn:disabled { opacity: .6; cursor: default; }
 .cb-btn-quiet { background: #FFFFFF; color: #0E0C0B; }
 .cb-btn-quiet:hover { background: #F5EBD2; }
+/* 되돌릴 수 없는 동작이라 색으로 구분한다. 접혀 있는 「삭제」는 조용한
+   버튼이고, 펼친 뒤 실제로 지우는 버튼만 빨갛다. */
+.cb-btn-danger { background: #8A3A20; border-color: #6E2D18; color: #fff; }
+.cb-btn-danger:hover { background: #A24427; }
 
 /* ── 글쓰기 창 ── */
 .cb-dlg {
@@ -106,6 +110,18 @@
   overflow: auto;
   line-height: 1.7;
 }
+
+/* 삭제 확인 줄. 평소에는 접혀 있다 (hidden). */
+.cb-del { margin-top: 16px; border-top: 1px solid #D8CFBE; padding-top: 16px; }
+.cb-del label { display: block; font-size: 14px; color: #635B53; margin-bottom: 6px; }
+.cb-del-row { display: flex; gap: 8px; }
+.cb-del-row input {
+  font: inherit; font-size: 15px; color: #0E0C0B; flex: 1; min-width: 0;
+  border: 1px solid #D8CFBE; background: #F4EFE4; padding: 10px 12px;
+}
+.cb-del-row input:focus { outline: 2px solid #8E5F06; outline-offset: -1px; }
+/* 삭제 버튼은 왼쪽으로 밀어 「닫기」와 떨어뜨린다 — 붙어 있으면 잘못 누른다. */
+.cb-view .cb-actions .cb-del-open { margin-right: auto; }
 
 @media (max-width: 520px) {
   .cb-post { grid-template-columns: 32px 1fr; gap: 12px; }
