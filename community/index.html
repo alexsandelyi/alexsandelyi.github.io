@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F4EFE4">
+<title>커뮤니티 — 일빵</title>
+<style>
+/* 런처와 같은 값을 쓴다. 번들 밖 독립 페이지라 변수를 여기 다시 적는다 —
+   런처의 CSS 를 끌어오면 번들 재생성 때 이름이 바뀌어 깨진다. */
+:root{
+  --bg:#F4EFE4; --raised:#FFFFFF; --card:#FCFAF6;
+  --ink:#0E0C0B; --muted:#635B53; --faint:#8A8177;
+  --line:#D8CFBE; --line-strong:#241E19;
+  --accent:#8E5F06; --accent-soft:#F5EBD2;
+  --font:"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --sp2:8px; --sp4:16px; --sp6:24px; --sp8:32px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--font);
+  font-size:16px; line-height:1.5;
+  -webkit-text-size-adjust:100%;
+}
+a{color:inherit}
+
+.wrap{max-width:880px; margin:0 auto; padding:var(--sp6) var(--sp4) 64px}
+
+/* ── 머리 ── */
+.top{display:flex; align-items:center; gap:var(--sp4); margin-bottom:var(--sp6)}
+.back{
+  border:1px solid var(--line-strong); background:var(--raised);
+  padding:6px 14px; border-radius:999px; font:inherit; font-size:14px;
+  cursor:pointer; text-decoration:none; display:inline-block;
+}
+.back:hover{background:var(--accent-soft)}
+h1{margin:0; font-size:28px; letter-spacing:-.02em}
+.count{color:var(--faint); font-size:14px; margin-left:auto}
+
+.bar{display:flex; gap:var(--sp2); margin-bottom:var(--sp4)}
+.btn{
+  border:1px solid var(--line-strong); background:var(--ink); color:#fff;
+  padding:10px 20px; border-radius:999px; font:inherit; font-size:15px;
+  cursor:pointer;
+}
+.btn:hover{background:#2b2320}
+.btn-quiet{background:var(--raised); color:var(--ink)}
+.btn-quiet:hover{background:var(--accent-soft)}
+
+/* ── 목록 ── */
+#list{display:grid; gap:var(--sp2)}
+.post{
+  display:grid; grid-template-columns:38px 1fr auto; gap:var(--sp4);
+  align-items:center;
+  background:var(--card); border:1px solid var(--line);
+  padding:var(--sp4);
+}
+.post-avatar{width:38px; height:38px; border-radius:999px; background:var(--line)}
+.post-main{min-width:0}
+.post-title{
+  display:block; font-weight:700; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.post-meta{display:block; font-size:14px; color:var(--muted); margin-top:2px}
+.post-meta .dot{margin:0 6px; color:var(--faint)}
+.post-id{color:var(--faint); font-size:13px}
+
+/* ── 상태 ── */
+.state{
+  text-align:center; color:var(--muted);
+  padding:56px var(--sp4); background:var(--card); border:1px dashed var(--line);
+}
+.state p{margin:0 0 var(--sp2)}
+.state-sub{color:var(--faint); font-size:14px}
+.state-error{border-color:#C9A08A; color:#8A3A20}
+
+/* ── 페이지 번호 ── */
+#pager{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:var(--sp6)}
+.page{
+  min-width:38px; padding:8px 10px; font:inherit; font-size:14px; cursor:pointer;
+  border:1px solid var(--line); background:var(--raised); color:var(--ink);
+}
+.page:hover:not(:disabled){background:var(--accent-soft)}
+.page:disabled{opacity:.35; cursor:default}
+.page.is-current{background:var(--ink); color:#fff; border-color:var(--ink); font-weight:700}
+.page-gap{padding:8px 4px; color:var(--faint)}
+
+@media (max-width:520px){
+  .wrap{padding:var(--sp4) 12px 56px}
+  h1{font-size:22px}
+  .post{grid-template-columns:32px 1fr; gap:12px}
+  .post-avatar{width:32px; height:32px}
+  .post-id{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="back" href="../">← 목록</a>
+    <h1>커뮤니티</h1>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="bar">
+    <button class="btn" id="btnWrite" type="button">글 쓰기</button>
+  </div>
+
+  <div id="list"></div>
+  <nav id="pager" aria-label="페이지"></nav>
+</div>
+
+<script src="js/01-api.js"></script>
+<script src="js/02-list.js"></script>
+</body>
+</html>
