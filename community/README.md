@@ -2,7 +2,8 @@
 
 **상태: 설계 확정, 구현 전** (2026-08-13).
 
-누구나 글을 쓰고 누구나 읽는다. 한 페이지에 10개.
+**로그인이 없다.** 누구나 와서 쓰고 누구나 읽는다. 한 페이지에 10개.
+계정도 세션도 만들지 않는다.
 
 ## 왜 별도 페이지인가
 
@@ -54,9 +55,11 @@ CREATE TABLE posts (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   title      TEXT    NOT NULL,
   body       TEXT    NOT NULL,
-  author     TEXT    NOT NULL,          -- 표시용 이름
+  author     TEXT    NOT NULL DEFAULT '익명',
   created_at INTEGER NOT NULL,          -- epoch ms
   ip_hash    TEXT    NOT NULL,          -- 원문 IP 는 저장하지 않는다
+  pw_salt    TEXT    NOT NULL,          -- 글마다 다르게
+  pw_hash    TEXT    NOT NULL,          -- 본인 삭제용. 평문 저장 안 함
   deleted    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_posts_list ON posts (deleted, created_at DESC, id DESC);
@@ -68,6 +71,23 @@ CREATE INDEX idx_posts_list ON posts (deleted, created_at DESC, id DESC);
 **지우지 않고 `deleted` 를 세운다.** 실수로 지운 것을 되돌릴 수 있고,
 신고 처리 이력이 남는다.
 
+## 로그인이 없으므로 글마다 비밀번호를 받는다
+
+글쓴이가 「내가 썼다」를 증명할 방법이 없다. 한국 익명 게시판이 오래 쓰는
+방식을 그대로 쓴다 — **글 쓸 때 비밀번호를 같이 받아 본인 수정·삭제에
+쓴다.** 이게 없으면 오타 하나 고치는 것도, 본인이 올린 개인정보를 스스로
+지우는 것도 못 한다.
+
+관리자 비밀번호는 이것과 별개이고 모든 글을 지울 수 있다.
+
+**해시는 SHA-256 + 글마다 다른 소금값 + 서버 후추값**으로 한다. bcrypt 나
+반복 많은 PBKDF2 를 쓰지 않는 이유는 **Workers 무료 플랜의 CPU 한도가
+호출당 10ms** 라 반복 해싱이 한도를 넘기기 때문이다.
+
+이 약한 해시를 받아들이는 근거는 **이게 계정 비밀번호가 아니라 글 하나를
+지우는 코드**라는 것이다. 대신 화면에 **「쓰던 비밀번호를 넣지 마세요」**를
+반드시 띄운다. 재사용하면 우리 약한 해시가 남의 계정 위험이 된다.
+
 ## API
 
 | 메서드 | 경로 | 내용 |
@@ -76,7 +96,8 @@ CREATE INDEX idx_posts_list ON posts (deleted, created_at DESC, id DESC);
 | `GET` | `/api/posts/:id` | 글 하나 |
 | `POST` | `/api/posts` | 작성 (Turnstile 토큰 필요) |
 | `POST` | `/api/posts/:id/report` | 신고 |
-| `DELETE` | `/api/posts/:id` | 삭제 (관리자 비밀번호) |
+| `DELETE` | `/api/posts/:id` | 삭제 (글 비밀번호 **또는** 관리자 비밀번호) |
+| `PATCH` | `/api/posts/:id` | 수정 (글 비밀번호) |
 
 ```json
 { "posts": [ ... ], "page": 1, "pages": 14, "total": 137 }
@@ -100,7 +121,8 @@ CREATE INDEX idx_posts_list ON posts (deleted, created_at DESC, id DESC);
 | **Turnstile** | Cloudflare 캡차. 무료이고 같은 벤더라 붙이기 쉽다 |
 | **속도 제한** | 같은 `ip_hash` 로 N분에 1개 |
 | **길이 제한** | 제목 100자 / 본문 2000자. **서버에서 검증한다** |
-| **삭제 수단** | 관리자 비밀번호로 언제든 지울 수 있어야 한다 |
+| **삭제 수단** | 글 비밀번호로 본인이, 관리자 비밀번호로 내가 지운다 |
+| **비밀번호 시도 제한** | 같은 글에 반복 시도하면 막는다. 안 그러면 4자리는 금방 뚫린다 |
 | **신고 버튼** | 남의 글을 받는 이상 필요하다 |
 
 **XSS 는 타협하지 않는다.** 사용자 글을 `innerHTML` 에 넣지 않는다.
@@ -124,7 +146,7 @@ Turnstile 비밀키, IP 소금값은 전부 `wrangler secret put` 으로 Cloudfl
 2. Worker 의 `GET /api/posts` 만 먼저. 더미 데이터로 목록·페이지네이션 완성
 3. 프런트 목록 화면 (로딩·빈·오류 포함)
 4. `POST /api/posts` + Turnstile + 속도 제한 + 서버 검증
-5. 삭제·신고
+5. 글 비밀번호로 수정·삭제, 신고
 6. `api.ilbbang.com` 연결, CORS 확인
 7. 런처 「커뮤니티」 버튼 연결 (`tmp/patch-*.js`)
 
@@ -134,5 +156,7 @@ Turnstile 비밀키, IP 소금값은 전부 `wrangler secret put` 으로 Cloudfl
 - `?page=999` 처럼 없는 페이지에 들어가면 어떻게 되는가
 - 제목에 `<script>` 를 넣어도 실행되지 않는가
 - 같은 사람이 연속으로 쓰면 막히는가
+- 틀린 비밀번호로 남의 글을 지울 수 있는가 (반드시 실패해야 한다)
+- 비밀번호를 반복해서 틀리면 막히는가
 - 서버가 죽었을 때 화면에 오류가 뜨는가
 - 모바일 세로에서 목록·작성 폼이 쓸 만한가
