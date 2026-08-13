@@ -3,7 +3,7 @@
 // 클래식 <script> 라 전역 스코프를 공유한다. index.html 의 로드 순서를
 // 지켜야 한다 — 10-draw.js 가 이 파일의 함수를 쓰므로 앞에 온다.
 //
-// 규격은 games/soccer/player-sprites.md. 시트는 tools/sprite-gen.py 가
+// 시트는 tools/sprite-gen.py 가
 // 만든다. **시트를 다시 만들면 SPRITE_V 가 자동으로 갱신되고, 그러면
 // js/ 해시가 바뀌므로 `node tools/soccer-sim.js --restamp` 를 돌려야 한다.**
 

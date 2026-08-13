@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 """손으로 그린 일러스트를 스프라이트 셀로 옮긴다.
 
-sprite-gen.py 가 500줄을 넘어서 분리했다. 규격은
-games/soccer/sprite-pipeline.md 「이동 포즈는 손 일러스트다」.
+sprite-gen.py 가 500줄을 넘어서 분리했다.
 
 원본은 tools/sprite-src/ 에 있다 — 내려받기 폴더 같은 저장소 밖 경로에
 두면 재생성이 안 된다. 배경 제거는 tools/sprite-cutout.py 가 먼저 한다.

@@ -160,7 +160,7 @@ function shotLift(dist, v, power) {
 }
 
 // 공중볼 낙하 지점. z(t)=0 의 해석해를 쓰고 수평은 등속으로 근사한다.
-// 수치 적분을 돌리지 않으려는 것이다 (aerial-play.md 「AI 판단」).
+// 수치 적분을 돌리지 않으려는 것이다.
 function ballLanding() {
   if (ball.owner || ball.z <= 0) return { x:ball.x, y:ball.y, t:0 };
   const t = (ball.vz + Math.sqrt(ball.vz * ball.vz + 2 * GRAVITY * ball.z)) / GRAVITY;

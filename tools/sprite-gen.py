@@ -3,8 +3,8 @@
 """선수 스프라이트 시트 생성기 — games/soccer/assets/players.png
 
 포즈를 손으로 찍지 않고 사지 각도에서 그린다. 포즈 하나를 고치려고
-시트 전체를 다시 그릴 수는 없기 때문이다. 규격은
-games/soccer/player-sprites.md, 원본 조달은 games/soccer/sprite-sources.md.
+시트 전체를 다시 그릴 수는 없기 때문이다. 실패한 제작 방법은
+games/soccer/CLAUDE.md 「스프라이트 — 실패한 방법」에 있다.
 
     python tools/sprite-gen.py
 

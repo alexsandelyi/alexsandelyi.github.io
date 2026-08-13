@@ -8,7 +8,7 @@ function kickOwned(p, kind, power = 0.65) {
   let tx, ty, v, lift = 0;
   const aimMag = Math.hypot(p.aimX, p.aimY);
   const dir = attackDir[p.side];
-  // 누른 시간이 그대로 높이다 (aerial-play.md 「킥 높이 제어」).
+  // 누른 시간이 그대로 높이다.
   // 0.4 이하는 땅볼로 둬서 짧게 누르면 예전과 같게 나간다.
   const lp = Math.max(0, (power - 0.4) / 0.6);
   if (kind === 'shoot') {
@@ -72,7 +72,7 @@ function kickOwned(p, kind, power = 0.65) {
     // 체공을 먼저 정하고 거리를 맞추는 순서다 — 그래야 머리 높이(2.3m)
     // 위로 지나가 수비 발에 걸리지 않는다. 누른 길이가 체공과 거리를 함께
     // 늘린다. 공기 저항 때문에 실제 낙하 지점은 reach 보다 짧다 —
-    // 실측 13.7m·정점 3.21m ~ 38.8m·정점 4.70m (aerial-play.md).
+    // 실측 13.7m·정점 3.21m ~ 38.8m·정점 4.70m.
     if (humanCross) {
       const hang = 1.7 + 0.5 * power;
       const reach = (16 + 42 * power) * M;

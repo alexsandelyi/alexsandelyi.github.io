@@ -70,11 +70,10 @@ DNS 는 도메인 등록처에 걸어야 한다 (GitHub Pages 사용자 사이�
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
 | `games/soccer/assets/players.png` | 선수 스프라이트 시트 17장. `tools/sprite-gen.py` 산출물 — 손으로 고치지 않는다 |
 | `tools/sprite-src/` | 손으로 그린 원본 일러스트. 이게 진짜 원본이다 (내려받기 폴더가 아니라) |
-| `games/soccer/*.md` | 설계 문서. 목차는 `README.md`, 작성 규칙은 `games/soccer/AGENTS.md` |
+| `games/soccer/CLAUDE.md` | 축구 작업 지침. **밸런스 기준선 수치와 스프라이트 실패 기록이 여기에만 있다** — 지우면 복원 불가 |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
 | `tmp/` | 패치 스크립트와 번들 추출물. gitignore |
 | `.nojekyll` | Jekyll 우회. 이게 없을 때 Pages 빌드가 실패한 이력이 있다 |
-| `tools/sprite-src/` | 손으로 그린 원본 일러스트. 이게 진짜 원본이다 (내려받기 폴더가 아니라) |
 
 `index.html` 은 자립형이 **아니다**. 폰트·JS 는 파일 안에 박혀 있지만 위 이미지 11개는 외부 참조다.
 
@@ -128,7 +127,7 @@ cp 일빵-런처-확정안.html index.html
 
 측정하지 않았으면 **모른다고 적는다.** 값을 짐작해 "이 정도일 것"이라고 단정하지 않는다. 확인이 필요해 보이면 실행하지 말고 명령어와 볼 지점을 알려주고 넘긴다.
 
-측정 도구와 기준선 문서는 그대로 둔다 — `soccer-sim.js -n 200` 이 `readHuman` 만 봇으로 갈아끼우고 실제 `step(1/60)` 을 돌린다. **30경기로는 판정할 수 없다** (95% 신뢰구간 ±18%p). 실측 기준선과 측정 조건은 `games/soccer/balance.md`, 전환 전 기준선은 `games/soccer/balance-history.md` 에 있다. 설계 문서 전반은 `games/soccer/README.md` 목차 참조.
+측정 도구는 그대로 둔다 — `soccer-sim.js -n 200` 이 `readHuman` 만 봇으로 갈아끼우고 실제 `step(1/60)` 을 돌린다. **30경기로는 판정할 수 없다** (95% 신뢰구간 ±18%p). 실측 기준선과 측정 조건은 `games/soccer/CLAUDE.md` 의 「밸런스 기준선」에 있다 — 설계 문서를 지우면서 그게 유일한 출처가 됐다.
 
 **승률·득점 목표에 맞춘 상수 튜닝(재밸런싱)은 하지 않는다** — 별도의 사용자 지시다. 목표값(쉬움 80% / 보통 53% / 어려움 23%, 경기당 2~3골)은 참고값이지 강제값이 아니다.
 

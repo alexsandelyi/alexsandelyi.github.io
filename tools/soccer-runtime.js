@@ -14,7 +14,6 @@ const GAME = path.join(__dirname, '..', 'games', 'soccer', 'index.html');
 // 쉬움 / 보통 / 어려움 목표 승률(%).
 // 쉬움은 원래 73% 였으나 2026-07-31 실측 81.5% 를 목표로 인정해 80% 로
 // 고쳤다. 이는 쉬움의 제품 목표이며 봇 측정값을 사람 승률로 해석하지 않는다.
-// games/soccer/balance.md 참조.
 const TARGET_WIN = [80, 53, 23];
 const TARGET_GOALS = [2, 3];            // 골목 FC끼리 10분 총 득점 목표
 const LEVEL_NAMES = ['쉬움', '보통', '어려움'];
