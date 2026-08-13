@@ -1,6 +1,6 @@
 // util.js — 해시, 검증, 응답, 속도 제한.
 //
-// index.js 가 500줄을 넘지 않게 나눴다. 규격은 community/README.md.
+// index.js 가 500줄을 넘지 않게 나눴다.
 
 export const PAGE_SIZE = 10;
 export const TITLE_MAX = 100;

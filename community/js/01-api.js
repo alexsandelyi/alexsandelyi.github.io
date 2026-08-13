@@ -5,7 +5,7 @@
 // 무엇으로 구현됐는지 모른다. 지금은 Cloudflare Worker 가 아직 없어서
 // 브라우저 안의 가짜 저장소로 돈다 (API_BASE 가 비어 있을 때).
 //
-// 규격은 community/README.md.
+// 규격은 루트 CLAUDE.md 「커뮤니티 게시판」.
 
 // Worker 주소. 배포 후 'https://api.ilbbang.com' 를 넣으면 진짜 서버를 쓴다.
 // 비어 있으면 아래 가짜 저장소로 돈다.

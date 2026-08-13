@@ -65,7 +65,7 @@ DNS 는 도메인 등록처에 걸어야 한다 (GitHub Pages 사용자 사이�
 | `app-ads.txt` | AdMob 인증. **도메인 루트에 있어야 하므로 지우면 안 된다.** 도메인을 바꾸면 AdMob 콘솔의 개발자 사이트 주소도 함께 바꿔야 인증이 유지된다 |
 | `CNAME` | 커스텀 도메인 `ilbbang.com`. **지우면 도메인이 조용히 풀린다** |
 | `games/soccer/` | 동네 축구 11v11. 의존성 없는 Canvas 2D |
-| `community/` | 커뮤니티 게시판. 설계는 `community/README.md`. 번들 밖 독립 페이지 |
+| `community/` | 커뮤니티 게시판. 번들 밖 독립 페이지. 아래 「커뮤니티 게시판」 참조 |
 | `worker/` | Cloudflare Worker (게시판 API). **Pages 가 서빙하지 않는다.** 비밀값은 저장소에 넣지 않는다 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
 | `games/soccer/assets/players.png` | 선수 스프라이트 시트 17장. `tools/sprite-gen.py` 산출물 — 손으로 고치지 않는다 |
@@ -109,6 +109,39 @@ cp 일빵-런처-확정안.html index.html
 넓은 화면에서는 읽는 영역만 **1760px** 로 묶고 배경·레일·탭바는 창을 채운다. 안 묶으면 히어로가 16/9 로 계속 늘어난다(1920 에서 748px). 상한은 2026-08-05 에 1440 → 1760 으로 올렸다 — 1440 에서는 1920 화면의 좌우 여백이 194px 씩 남아 허전했다. 아주 없애지는 않는다: 미디어 높이가 440px 로 묶여 있어 초광폭에서 2.7:1 로 납작해진다.
 
 폰트는 시스템 한글 폰트를 쓴다(Apple SD Gothic Neo / 맑은 고딕).
+
+## 커뮤니티 게시판 (`community/` + `worker/`)
+
+**아직 배포 전이다** (2026-08-13). 프런트와 Worker 코드는 돌지만 `api.ilbbang.com` 연결과 CORS 확인이 남았고, 수정·신고는 API 만 있고 화면이 없다. `js/01-api.js` 의 `API_BASE` 가 비어 있으면 **localStorage 가짜 저장소**로 도는데 지금이 그 상태다. 응답 모양이 진짜와 같아서 나중에 주소 한 줄만 넣으면 갈린다.
+
+로그인이 없다. 글 쓸 때 받는 비밀번호가 본인이 자기 글을 지우는 유일한 수단이다.
+
+### apex 에 Cloudflare 프록시를 켜지 않는다
+
+| 이름 | 가리키는 곳 | 프록시 |
+|---|---|---|
+| `ilbbang.com`, `www` | GitHub Pages | **끔** (지금 그대로) |
+| `api.ilbbang.com` | Worker | **켬** (Worker 는 프록시가 필요) |
+
+`ilbbang.com/api/*` 로 Worker 경로를 잡으면 apex 에 프록시를 켜야 하고, 그러면 GitHub Pages 인증서 갱신(90일마다 HTTP 검증)이 위험해진다. **잘 도는 것을 흔들지 않는다.** 대신 출처가 달라지므로 Worker 가 `Access-Control-Allow-Origin: https://ilbbang.com` 을 붙인다.
+
+### 비밀번호 해시를 「고치지」 않는다
+
+SHA-256 + 글마다 다른 소금값 + 서버 후추값이다. bcrypt 나 반복 많은 PBKDF2 로 바꾸면 **Workers 무료 플랜의 호출당 CPU 10ms 한도**를 넘겨 터진다. 계정 비밀번호가 아니라 글 하나를 지우는 코드라서 받아들인 선택이고, 그래서 화면에 **「쓰던 비밀번호를 넣지 마세요」**를 반드시 띄운다. 재사용하면 이 약한 해시가 남의 계정 위험이 된다.
+
+관리자 비밀번호, Turnstile 비밀키, IP 소금값은 `wrangler secret put` 으로 Cloudflare 에 둔다. **저장소가 Public 이라 코드에는 이름만 남긴다.** 원문 IP 도 저장하지 않는다 — 소금과 함께 해시해 속도 제한에만 쓴다.
+
+### 사용자 글은 `textContent` 로만 넣는다
+
+`innerHTML` 에 넣지 않는다. 줄바꿈은 `<br>` 치환이 아니라 `white-space: pre-wrap` 으로 살린다 — 바꾸는 순간 XSS 가 열린다.
+
+### 검증은 배포 없이 돈다
+
+```bash
+node worker/test.mjs   # 46항목. D1 대신 node:sqlite, 핸들러는 배포될 코드 그대로
+```
+
+런처 안에서도 같은 부품(`02-board.js`)이 돈다. 번들에는 `<script src>` 네 줄만 넣고(`tmp/patch-community.js`) 로직은 전부 번들 밖에 둔다. React 가 섹션을 다시 그리면 우리 것이 지워지므로 `embed.js` 가 `MutationObserver` 로 다시 붙인다. 런처에서는 주소에 `?page=` 를 쓰지 않는다 — 게시판이 런처의 주소를 바꾸면 안 된다.
 
 ## 게임 (`games/soccer/`)
 

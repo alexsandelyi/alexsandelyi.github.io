@@ -130,6 +130,26 @@ font-family:
 - 히어로가 16:9 비율로 무제한 커져 1920px 화면에서 과도하게 높아지지
   않도록 확인한다.
 
+## 커뮤니티 게시판 규칙
+
+- `community/`(정적 프런트)와 `worker/`(Cloudflare Worker)로 나뉜다.
+  **Pages 는 `worker/` 를 서빙하지 않는다.**
+- **아직 배포 전이다** (2026-08-13). `api.ilbbang.com` 연결과 CORS 확인이
+  남았고, 수정·신고는 API 만 있고 화면이 없다.
+- `js/01-api.js` 의 `API_BASE` 가 비어 있으면 localStorage 가짜 저장소로
+  돈다. 지금이 그 상태다.
+- **apex(`ilbbang.com`)에 Cloudflare 프록시를 켜지 않는다.** GitHub Pages
+  인증서 갱신(90일마다 HTTP 검증)이 위험해진다. Worker 는
+  `api.ilbbang.com` 서브도메인에 프록시를 켜서 붙이고 CORS 로 연결한다.
+- 글 비밀번호 해시를 bcrypt 나 반복 PBKDF2 로 바꾸지 않는다. Workers 무료
+  플랜의 호출당 CPU 10ms 한도를 넘긴다. SHA-256 + 소금 + 서버 후추를
+  유지하고, 화면에 「쓰던 비밀번호를 넣지 마세요」를 띄운다.
+- 관리자 비밀번호, Turnstile 비밀키, IP 소금값은 `wrangler secret put` 으로
+  둔다. 저장소가 Public 이므로 코드에는 이름만 남긴다.
+- 사용자 글을 `innerHTML` 에 넣지 않는다. `textContent` 만 쓰고 줄바꿈은
+  `white-space: pre-wrap` 으로 살린다.
+- 배포 없이 `node worker/test.mjs` 46항목으로 검증한다.
+
 ## 축구 게임 규칙
 
 - 경기장 논리 좌표는 실제 105m × 68m를 1m = 20단위로 옮긴

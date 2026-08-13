@@ -1,6 +1,6 @@
 // index.js — 커뮤니티 게시판 API (Cloudflare Worker).
 //
-// 규격은 community/README.md. 도우미는 util.js.
+// 규격은 루트 CLAUDE.md 「커뮤니티 게시판」. 도우미는 util.js.
 //
 //   GET    /api/posts?page=1     목록 10개 + 총 개수
 //   GET    /api/posts/:id        글 하나
