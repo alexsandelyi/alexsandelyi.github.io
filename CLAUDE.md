@@ -65,6 +65,8 @@ DNS 는 도메인 등록처에 걸어야 한다 (GitHub Pages 사용자 사이�
 | `app-ads.txt` | AdMob 인증. **도메인 루트에 있어야 하므로 지우면 안 된다.** 도메인을 바꾸면 AdMob 콘솔의 개발자 사이트 주소도 함께 바꿔야 인증이 유지된다 |
 | `CNAME` | 커스텀 도메인 `ilbbang.com`. **지우면 도메인이 조용히 풀린다** |
 | `games/soccer/` | 동네 축구 11v11. 의존성 없는 Canvas 2D |
+| `community/` | 커뮤니티 게시판. 설계는 `community/README.md`. 번들 밖 독립 페이지 |
+| `worker/` | Cloudflare Worker (게시판 API). **Pages 가 서빙하지 않는다.** 비밀값은 저장소에 넣지 않는다 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
 | `games/soccer/assets/players.png` | 선수 스프라이트 시트 32장. `tools/sprite-gen.py` 산출물 — 손으로 고치지 않는다 |
 | `tools/sprite-src/` | 손으로 그린 원본 일러스트. 이게 진짜 원본이다 (내려받기 폴더가 아니라) |
