@@ -139,6 +139,41 @@ function cbMakeDialog(onDone) {
   };
 }
 
+// 글 내용을 보는 창. 목록 응답에 본문이 이미 들어 있어 추가 요청 없이 띄운다.
+//
+// 본문은 textContent 로 넣고 줄바꿈은 CSS(white-space:pre-wrap)로 살린다.
+// <br> 로 바꿔 innerHTML 에 넣으면 그 순간 XSS 가 열린다.
+function cbMakeViewDialog() {
+  const dlg = cbEl('dialog', 'cb-dlg cb-view');
+  const box = cbEl('div', 'cb-form');
+  const title = cbEl('h2', 'cb-view-title');
+  const meta = cbEl('p', 'cb-view-meta');
+  const body = cbEl('div', 'cb-view-body');
+  const actions = cbEl('div', 'cb-actions');
+  const close = cbEl('button', 'cb-btn cb-btn-quiet', '닫기');
+  close.type = 'button';
+  actions.append(close);
+  box.append(title, meta, body, actions);
+  dlg.append(box);
+  document.body.append(dlg);
+
+  close.addEventListener('click', () => dlg.close());
+  // 배경을 눌러도 닫히게 한다. <dialog> 는 기본으로 안 닫힌다.
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+
+  return {
+    open(p) {
+      title.textContent = p.title;
+      const when = cbTime(p.created_at) +
+        (p.updated_at ? ' (수정 ' + cbTime(p.updated_at) + ')' : '');
+      meta.textContent = (p.author || '익명') + ' · ' + when + ' · #' + p.id;
+      body.textContent = p.body;
+      dlg.showModal();
+      close.focus();
+    }
+  };
+}
+
 // ── 게시판 ──────────────────────────────────────────────────────────
 // listEl / pagerEl / countEl 을 받아 그 안에 그린다. 어디에 붙이든 같다.
 //
@@ -153,6 +188,7 @@ function createBoard(opts) {
   let page = 1;
 
   const dialog = cbMakeDialog(() => load(1));   // 새 글은 맨 앞이므로 1페이지
+  const viewer = cbMakeViewDialog();
 
   function setCount(t) { if (countEl) countEl.textContent = t; }
   function clearPager() { if (pagerEl) pagerEl.replaceChildren(); }
@@ -184,7 +220,11 @@ function createBoard(opts) {
   function renderPosts(posts) {
     const frag = document.createDocumentFragment();
     for (const p of posts) {
-      const card = cbEl('article', ('cb-post ' + cardClass).trim());
+      // <button> 으로 만든다. div 에 클릭만 달면 키보드·스크린리더로는
+      // 누를 수 없다. 모양은 board.css 가 버튼 기본값을 지운다.
+      const card = cbEl('button', ('cb-post ' + cardClass).trim());
+      card.type = 'button';
+      card.addEventListener('click', () => viewer.open(p));
       card.append(cbEl('span', 'cb-avatar'));
       const mid = cbEl('span', 'cb-main');
       mid.append(cbEl('span', 'cb-title', p.title));

@@ -89,14 +89,6 @@ CREATE INDEX idx_posts_list ON posts (deleted, created_at DESC, id DESC);
 Turnstile 비밀키, IP 소금값은 전부 `wrangler secret put` 으로 Cloudflare 에
 둔다. 코드에는 이름만 남는다.
 
-## 프런트 동작
-
-- 주소에 `?page=2` 를 반영한다 — 새로고침·뒤로가기·링크 공유가 된다
-- 한 페이지 **10개 고정**
-- **로딩 / 빈 목록 / 오류**를 각각 그린다. 서버가 죽었을 때 빈 화면만
-  나오면 원인을 알 수 없다
-- 작성은 목록 위의 「글 쓰기」로 연다
-
 ## Worker 검증 — 배포 없이 돈다
 
 `worker/test.mjs` 가 **진짜 스키마 위에서 fetch 핸들러를 통째로** 돌린다.

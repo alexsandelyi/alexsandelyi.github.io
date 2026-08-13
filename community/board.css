@@ -12,7 +12,15 @@
   gap: 16px;
   align-items: center;
   text-align: left;
+  /* 카드가 <button> 이다 — 키보드로도 눌러야 하므로. 버튼 기본값을 지워
+     앞서 만든 카드 모양과 같아지게 한다. */
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  cursor: pointer;
 }
+.cb-post:hover { background: #F5EBD2; }
+.cb-post:focus-visible { outline: 2px solid #8E5F06; outline-offset: 2px; }
 .cb-avatar { width: 38px; height: 38px; border-radius: 999px; background: #D8CFBE; }
 .cb-main { min-width: 0; }
 .cb-title {
@@ -83,6 +91,21 @@
   background: #FBE9E2; border: 1px solid #C9A08A; padding: 10px 12px;
 }
 .cb-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
+
+/* ── 글 보기 창 ── */
+.cb-view-title { margin: 0 0 4px; font-size: 20px; word-break: break-word; }
+.cb-view-meta { margin: 0 0 16px; font-size: 14px; color: #8A8177; }
+.cb-view-body {
+  /* 줄바꿈은 여기서 살린다. <br> 로 바꿔 innerHTML 에 넣으면 XSS 가 열린다. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid #D8CFBE;
+  padding-top: 16px;
+  min-height: 60px;
+  max-height: 50vh;
+  overflow: auto;
+  line-height: 1.7;
+}
 
 @media (max-width: 520px) {
   .cb-post { grid-template-columns: 32px 1fr; gap: 12px; }
