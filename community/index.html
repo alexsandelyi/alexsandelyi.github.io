@@ -86,6 +86,41 @@ h1{margin:0; font-size:28px; letter-spacing:-.02em}
 .page.is-current{background:var(--ink); color:#fff; border-color:var(--ink); font-weight:700}
 .page-gap{padding:8px 4px; color:var(--faint)}
 
+/* ── 글쓰기 ── */
+dialog{
+  border:1px solid var(--line-strong); background:var(--raised);
+  padding:0; width:min(560px, calc(100vw - 24px)); color:var(--ink);
+}
+dialog::backdrop{background:rgba(20,16,12,.45)}
+#writeForm{padding:var(--sp6); display:grid; gap:6px}
+#writeForm h2{margin:0 0 var(--sp4); font-size:20px}
+#writeForm label{
+  font-size:14px; color:var(--muted); margin-top:10px;
+  display:flex; align-items:baseline; gap:8px;
+}
+#writeForm .c{margin-left:auto; font-size:12px; color:var(--faint)}
+#writeForm .c.over{color:#B3341C; font-weight:700}
+#writeForm .hint{font-size:12px; color:var(--faint)}
+#writeForm input,#writeForm textarea{
+  font:inherit; font-size:15px; color:var(--ink);
+  border:1px solid var(--line); background:var(--bg);
+  padding:10px 12px; width:100%;
+}
+#writeForm input:focus,#writeForm textarea:focus{
+  outline:2px solid var(--accent); outline-offset:-1px;
+}
+#writeForm textarea{resize:vertical; min-height:120px}
+#writeForm .warn{
+  margin:10px 0 0; font-size:13px; color:#7A5A12;
+  background:var(--accent-soft); border:1px solid #E2CFA0; padding:10px 12px;
+}
+#writeForm .err{
+  margin:12px 0 0; font-size:14px; color:#8A3A20;
+  background:#FBE9E2; border:1px solid #C9A08A; padding:10px 12px;
+}
+.dlg-actions{display:flex; gap:var(--sp2); justify-content:flex-end; margin-top:var(--sp6)}
+.btn:disabled{opacity:.6; cursor:default}
+
 @media (max-width:520px){
   .wrap{padding:var(--sp4) 12px 56px}
   h1{font-size:22px}
@@ -111,7 +146,37 @@ h1{margin:0; font-size:28px; letter-spacing:-.02em}
   <nav id="pager" aria-label="페이지"></nav>
 </div>
 
+<dialog id="writeDlg" aria-labelledby="writeTitle">
+  <form id="writeForm" method="dialog" novalidate>
+    <h2 id="writeTitle">글 쓰기</h2>
+
+    <label for="fAuthor">이름 <span class="c" id="cAuthor"></span></label>
+    <input id="fAuthor" type="text" placeholder="익명" autocomplete="off">
+
+    <label for="fTitle">제목 <span class="c" id="cTitle"></span></label>
+    <input id="fTitle" type="text" autocomplete="off">
+
+    <label for="fBody">내용 <span class="c" id="cBody"></span></label>
+    <textarea id="fBody" rows="8"></textarea>
+
+    <label for="fPw">비밀번호 <span class="hint">이 글을 지울 때 씁니다</span></label>
+    <input id="fPw" type="password" autocomplete="new-password">
+    <p class="warn">
+      쓰던 비밀번호를 넣지 마세요. 글 하나를 지우는 용도이고
+      계정 비밀번호만큼 안전하게 보관하지 않습니다.
+    </p>
+
+    <p class="err" id="formErr" hidden></p>
+
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-quiet" id="btnCancel">취소</button>
+      <button type="submit" class="btn" id="btnSubmit">올리기</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="js/01-api.js"></script>
 <script src="js/02-list.js"></script>
+<script src="js/03-write.js"></script>
 </body>
 </html>
