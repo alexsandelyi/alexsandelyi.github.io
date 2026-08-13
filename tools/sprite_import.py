@@ -9,6 +9,7 @@ games/soccer/sprite-pipeline.md 「이동 포즈는 손 일러스트다」.
 두면 재생성이 안 된다. 배경 제거는 tools/sprite-cutout.py 가 먼저 한다.
 """
 
+import math
 import os
 import sys
 
@@ -32,6 +33,20 @@ IMPORTED = {
     'idle': (['stand0.png'], False),
     'walk': (['stand0.png', 'stand1.png'], True),
     'run': (['run.png'], True),
+    # 아래 10개는 생성기(sprite-ai)로 뽑은 오버헤드 그림이다. 포즈마다
+    # 한 장뿐이라 SHEET 의 장수도 1 로 맞춰 뒀다 — 애니메이션이 아니라
+    # 정지 포즈다. 프레임을 늘리려면 원본을 더 받아 여기와 SHEET 를
+    # 함께 고친다.
+    'kick': (['kick.png'], False),
+    'shoot': (['shoot.png'], False),
+    'charge': (['charge.png'], False),
+    'tackle': (['tackle.png'], False),
+    'block': (['block.png'], False),
+    'header': (['header.png'], False),
+    'deflect': (['deflect.png'], False),
+    'gk-dive': (['gk-dive.png'], False),
+    'gk-claim': (['gk-claim.png'], False),
+    'gk-punt': (['gk-punt.png'], False),
 }
 
 # 일러스트의 크기 기준은 **어깨 폭**이다 (전체 길이가 아니다). 길이로
@@ -87,10 +102,9 @@ def _split_layers(src):
     return shirt, detail, widest
 
 
-def _fit(shirt, detail, kit_w, flip):
-    """층 한 쌍을 어깨 폭 기준으로 셀에 앉힌다."""
-    k = KIT_W / kit_w
-    pair = []
+def _place(shirt, detail, k, flip):
+    """배율 k 로 층 한 쌍을 셀에 앉히고, 중심에서 가장 먼 픽셀 거리를 잰다."""
+    pair, worst = [], 0.0
     for layer in (shirt, detail):
         img = layer.transpose(Image.FLIP_LEFT_RIGHT) if flip else layer
         img = img.transpose(Image.ROTATE_270)          # 위 → +x
@@ -98,7 +112,33 @@ def _fit(shirt, detail, kit_w, flip):
                           max(1, int(round(img.height * k)))), Image.LANCZOS)
         cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
         cell.paste(img, ((CELL - img.width) // 2, (CELL - img.height) // 2))
+        p = cell.load()
+        for y in range(CELL):
+            for x in range(CELL):
+                if p[x, y][3] > 8:
+                    worst = max(worst, math.hypot(x - (CELL - 1) / 2.0,
+                                                  y - (CELL - 1) / 2.0))
         pair.append(cell)
+    return pair, worst
+
+
+def _fit(shirt, detail, kit_w, flip, where=''):
+    """층 한 쌍을 어깨 폭 기준으로 셀에 앉힌다.
+
+    기준은 어깨 폭이지만, 그대로 맞추면 내접원을 넘는 포즈가 있다 —
+    다이빙처럼 몸을 길게 뻗는 자세다. 넘으면 **그 포즈만 줄여서** 넣는다.
+    sprite-gen.py 의 check_fit() 은 넘으면 생성을 실패시키므로, 여기서
+    줄이지 않으면 시트를 아예 만들 수 없다. 회전 시 모서리가 잘리는 것보다
+    한 포즈가 조금 작은 편이 낫다.
+    """
+    k = KIT_W / kit_w
+    pair, worst = _place(shirt, detail, k, flip)
+    lim = CELL / 2.0 - 1.0
+    if worst > lim:
+        k *= lim / worst * 0.98        # 재샘플링 오차 여유
+        pair, after = _place(shirt, detail, k, flip)
+        print('  %s: 내접원 초과(%.1f) → %.0f%% 로 줄임 (%.1f)'
+              % (where or '?', worst, 100 * k * kit_w / KIT_W, after))
     return pair
 
 
@@ -112,7 +152,7 @@ def load_imported(files, mirror):
         src = Image.open(os.path.join(SRC_DIR, fname)).convert('RGBA')
         shirt, detail, kit_w = _split_layers(src)
         for flip in ((False, True) if mirror else (False,)):
-            frames.append(_fit(shirt, detail, kit_w, flip))
+            frames.append(_fit(shirt, detail, kit_w, flip, fname))
     _imported_cache[key] = frames
     return frames
 

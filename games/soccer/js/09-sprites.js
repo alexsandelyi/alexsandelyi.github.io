@@ -7,7 +7,7 @@
 // 만든다. **시트를 다시 만들면 SPRITE_V 가 자동으로 갱신되고, 그러면
 // js/ 해시가 바뀌므로 `node tools/soccer-sim.js --restamp` 를 돌려야 한다.**
 
-const SPRITE_V = 'e49d07e8';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
+const SPRITE_V = 'fb3fb999';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
 const SPRITE_CELL = 64;
 // 셀 대비 몸(어깨) 지름. 그리기 크기를 몸 기준으로 맞추는 데 쓴다 —
 // 셀 기준으로 맞추면 팔다리 여백까지 세어 선수가 작아 보인다.
@@ -22,10 +22,10 @@ const SPRITE_GAIN = 1.35;
 
 // 시트에서의 시작 칸과 장수. sprite-gen.py 의 SHEET 와 같아야 한다.
 const POSES = {
-  idle:[0, 1], walk:[1, 4], run:[5, 2], kick:[7, 3], shoot:[10, 3],
-  charge:[13, 1], tackle:[14, 3], block:[17, 2], header:[19, 3],
-  deflect:[22, 2], 'gk-dive':[24, 3], 'gk-claim':[27, 2],
-  'gk-punt':[29, 3]
+  idle:[0, 1], walk:[1, 4], run:[5, 2], kick:[7, 1], shoot:[8, 1],
+  charge:[9, 1], tackle:[10, 1], block:[11, 1], header:[12, 1],
+  deflect:[13, 1], 'gk-dive':[14, 1], 'gk-claim':[15, 1],
+  'gk-punt':[16, 1]
 };
 
 // 원샷 동작의 재생 길이(초). **쿨다운과 다르다.** headCd 0.6 은 연속

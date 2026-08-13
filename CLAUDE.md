@@ -68,7 +68,7 @@ DNS 는 도메인 등록처에 걸어야 한다 (GitHub Pages 사용자 사이�
 | `community/` | 커뮤니티 게시판. 설계는 `community/README.md`. 번들 밖 독립 페이지 |
 | `worker/` | Cloudflare Worker (게시판 API). **Pages 가 서빙하지 않는다.** 비밀값은 저장소에 넣지 않는다 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
-| `games/soccer/assets/players.png` | 선수 스프라이트 시트 32장. `tools/sprite-gen.py` 산출물 — 손으로 고치지 않는다 |
+| `games/soccer/assets/players.png` | 선수 스프라이트 시트 17장. `tools/sprite-gen.py` 산출물 — 손으로 고치지 않는다 |
 | `tools/sprite-src/` | 손으로 그린 원본 일러스트. 이게 진짜 원본이다 (내려받기 폴더가 아니라) |
 | `games/soccer/*.md` | 설계 문서. 목차는 `README.md`, 작성 규칙은 `games/soccer/AGENTS.md` |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |

@@ -27,6 +27,7 @@
 | [player-sprites.md](player-sprites.md) | 선수 그림. 액션별 포즈 목록, 방향, 포즈 우선순위, 규격 |
 | [sprite-pipeline.md](sprite-pipeline.md) | 스프라이트 만들기. 생성기, 프레임 수, 구현, 겪은 함정 |
 | [sprite-prompts.md](sprite-prompts.md) | 원본 그림을 이미지 생성 도구로 뽑을 때 쓰는 프롬프트와 제약 |
+| [sprite-sources.md](sprite-sources.md) | 원본을 어떻게 조달했나. 손 일러스트, 컷아웃 퍼펫(실패), 생성 포즈 |
 | [practice-mode.md](practice-mode.md) | 혼자 시험하기 — 연습 모드, 키 배치, `soccer-lab.js` |
 | [roadmap.md](roadmap.md) | 구현 순서, 단계별 완료 기준, 미결 질문 |
 

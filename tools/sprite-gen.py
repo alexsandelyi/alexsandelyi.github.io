@@ -3,7 +3,8 @@
 """선수 스프라이트 시트 생성기 — games/soccer/assets/players.png
 
 포즈를 손으로 찍지 않고 사지 각도에서 그린다. 포즈 하나를 고치려고
-34장을 다시 그릴 수는 없기 때문이다. 규격은 games/soccer/player-sprites.md.
+시트 전체를 다시 그릴 수는 없기 때문이다. 규격은
+games/soccer/player-sprites.md, 원본 조달은 games/soccer/sprite-sources.md.
 
     python tools/sprite-gen.py
 
@@ -231,9 +232,9 @@ def pose(name, f):
 # 500줄을 넘어서 나눴다.
 from sprite_import import IMPORTED, load_imported   # noqa: E402
 
-SHEET = [('idle', 1), ('walk', 4), ('run', 2), ('kick', 3), ('shoot', 3),
-         ('charge', 1), ('tackle', 3), ('block', 2), ('header', 3),
-         ('deflect', 2), ('gk-dive', 3), ('gk-claim', 2), ('gk-punt', 3)]
+SHEET = [('idle', 1), ('walk', 4), ('run', 2), ('kick', 1), ('shoot', 1),
+         ('charge', 1), ('tackle', 1), ('block', 1), ('header', 1),
+         ('deflect', 1), ('gk-dive', 1), ('gk-claim', 1), ('gk-punt', 1)]
 
 
 # ── 몸 비율 ─────────────────────────────────────────────────────────

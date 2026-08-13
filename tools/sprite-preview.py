@@ -12,14 +12,17 @@ import re
 from PIL import Image, ImageDraw
 sheet = Image.open('games/soccer/assets/players.png').convert('RGBA')
 CELL = 64
-LABELS = [('idle',0,1),('walk',1,4),('run',5,4),('kick',9,3),('shoot',12,3),
-          ('charge',15,1),('tackle',16,3),('block',19,2),('header',21,3),
-          ('deflect',24,2),('gk-dive',26,3),('gk-claim',29,2),('gk-punt',31,3)]
 GRASS = (0x2E,0x5B,0x3F,255)
 # 09-sprites.js 에서 읽는다. 베껴 두면 시트를 바꿀 때 어긋난다.
 _js = io.open('games/soccer/js/09-sprites.js', encoding='utf-8').read()
 BODY = float(re.search(r"const SPRITE_BODY = ([0-9.]+);", _js).group(1))
 GAIN = float(re.search(r"const SPRITE_GAIN = ([0-9.]+);", _js).group(1))
+# 칸 배치도 마찬가지다. 예전에 손으로 베껴 뒀다가 run 이 4→2 로 준 것을
+# 놓쳐, 프리뷰만 빈 칸과 옆 포즈를 그리고 있었다. sprite-gen.py 가 POSES
+# 를 09-sprites.js 에 직접 박으므로 그걸 그대로 읽는다.
+_poses = re.search(r"const POSES = \{(.*?)\};", _js, re.S).group(1)
+LABELS = [(m.group(1), int(m.group(2)), int(m.group(3)))
+          for m in re.finditer(r"'?([\w-]+)'?\s*:\s*\[(\d+),\s*(\d+)\]", _poses)]
 HOME=(0xF5,0x8A,0x5E); AWAY=(0xF2,0xCE,0x7A); GKH=(0x8F,0xD1,0xC4)
 
 def tint(img, rgb):
