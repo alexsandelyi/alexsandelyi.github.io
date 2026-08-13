@@ -5,129 +5,26 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#F4EFE4">
 <title>커뮤니티 — 일빵</title>
+<link rel="stylesheet" href="board.css">
 <style>
-/* 런처와 같은 값을 쓴다. 번들 밖 독립 페이지라 변수를 여기 다시 적는다 —
-   런처의 CSS 를 끌어오면 번들 재생성 때 이름이 바뀌어 깨진다. */
-:root{
-  --bg:#F4EFE4; --raised:#FFFFFF; --card:#FCFAF6;
-  --ink:#0E0C0B; --muted:#635B53; --faint:#8A8177;
-  --line:#D8CFBE; --line-strong:#241E19;
-  --accent:#8E5F06; --accent-soft:#F5EBD2;
-  --font:"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
-  --sp2:8px; --sp4:16px; --sp6:24px; --sp8:32px;
-}
+/* 이 페이지의 틀만. 목록·글쓰기 창 모양은 board.css 가 맡는다 —
+   런처 안에 붙는 게시판과 같은 것을 써야 두 곳이 어긋나지 않는다. */
+:root{ --bg:#F4EFE4; --ink:#0E0C0B; --faint:#8A8177; --line-strong:#241E19;
+       --font:"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif; }
 *{box-sizing:border-box}
 html,body{margin:0}
-body{
-  background:var(--bg); color:var(--ink); font-family:var(--font);
-  font-size:16px; line-height:1.5;
-  -webkit-text-size-adjust:100%;
-}
-a{color:inherit}
-
-.wrap{max-width:880px; margin:0 auto; padding:var(--sp6) var(--sp4) 64px}
-
-/* ── 머리 ── */
-.top{display:flex; align-items:center; gap:var(--sp4); margin-bottom:var(--sp6)}
-.back{
-  border:1px solid var(--line-strong); background:var(--raised);
-  padding:6px 14px; border-radius:999px; font:inherit; font-size:14px;
-  cursor:pointer; text-decoration:none; display:inline-block;
-}
-.back:hover{background:var(--accent-soft)}
+body{background:var(--bg); color:var(--ink); font-family:var(--font);
+     font-size:16px; line-height:1.5; -webkit-text-size-adjust:100%}
+.wrap{max-width:880px; margin:0 auto; padding:24px 16px 64px}
+.top{display:flex; align-items:center; gap:16px; margin-bottom:24px}
+.back{border:1px solid var(--line-strong); background:#fff; padding:6px 14px;
+      border-radius:999px; font-size:14px; text-decoration:none; color:inherit}
+.back:hover{background:#F5EBD2}
 h1{margin:0; font-size:28px; letter-spacing:-.02em}
 .count{color:var(--faint); font-size:14px; margin-left:auto}
-
-.bar{display:flex; gap:var(--sp2); margin-bottom:var(--sp4)}
-.btn{
-  border:1px solid var(--line-strong); background:var(--ink); color:#fff;
-  padding:10px 20px; border-radius:999px; font:inherit; font-size:15px;
-  cursor:pointer;
-}
-.btn:hover{background:#2b2320}
-.btn-quiet{background:var(--raised); color:var(--ink)}
-.btn-quiet:hover{background:var(--accent-soft)}
-
-/* ── 목록 ── */
-#list{display:grid; gap:var(--sp2)}
-.post{
-  display:grid; grid-template-columns:38px 1fr auto; gap:var(--sp4);
-  align-items:center;
-  background:var(--card); border:1px solid var(--line);
-  padding:var(--sp4);
-}
-.post-avatar{width:38px; height:38px; border-radius:999px; background:var(--line)}
-.post-main{min-width:0}
-.post-title{
-  display:block; font-weight:700; color:var(--ink);
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-.post-meta{display:block; font-size:14px; color:var(--muted); margin-top:2px}
-.post-meta .dot{margin:0 6px; color:var(--faint)}
-.post-id{color:var(--faint); font-size:13px}
-
-/* ── 상태 ── */
-.state{
-  text-align:center; color:var(--muted);
-  padding:56px var(--sp4); background:var(--card); border:1px dashed var(--line);
-}
-.state p{margin:0 0 var(--sp2)}
-.state-sub{color:var(--faint); font-size:14px}
-.state-error{border-color:#C9A08A; color:#8A3A20}
-
-/* ── 페이지 번호 ── */
-#pager{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:var(--sp6)}
-.page{
-  min-width:38px; padding:8px 10px; font:inherit; font-size:14px; cursor:pointer;
-  border:1px solid var(--line); background:var(--raised); color:var(--ink);
-}
-.page:hover:not(:disabled){background:var(--accent-soft)}
-.page:disabled{opacity:.35; cursor:default}
-.page.is-current{background:var(--ink); color:#fff; border-color:var(--ink); font-weight:700}
-.page-gap{padding:8px 4px; color:var(--faint)}
-
-/* ── 글쓰기 ── */
-dialog{
-  border:1px solid var(--line-strong); background:var(--raised);
-  padding:0; width:min(560px, calc(100vw - 24px)); color:var(--ink);
-}
-dialog::backdrop{background:rgba(20,16,12,.45)}
-#writeForm{padding:var(--sp6); display:grid; gap:6px}
-#writeForm h2{margin:0 0 var(--sp4); font-size:20px}
-#writeForm label{
-  font-size:14px; color:var(--muted); margin-top:10px;
-  display:flex; align-items:baseline; gap:8px;
-}
-#writeForm .c{margin-left:auto; font-size:12px; color:var(--faint)}
-#writeForm .c.over{color:#B3341C; font-weight:700}
-#writeForm .hint{font-size:12px; color:var(--faint)}
-#writeForm input,#writeForm textarea{
-  font:inherit; font-size:15px; color:var(--ink);
-  border:1px solid var(--line); background:var(--bg);
-  padding:10px 12px; width:100%;
-}
-#writeForm input:focus,#writeForm textarea:focus{
-  outline:2px solid var(--accent); outline-offset:-1px;
-}
-#writeForm textarea{resize:vertical; min-height:120px}
-#writeForm .warn{
-  margin:10px 0 0; font-size:13px; color:#7A5A12;
-  background:var(--accent-soft); border:1px solid #E2CFA0; padding:10px 12px;
-}
-#writeForm .err{
-  margin:12px 0 0; font-size:14px; color:#8A3A20;
-  background:#FBE9E2; border:1px solid #C9A08A; padding:10px 12px;
-}
-.dlg-actions{display:flex; gap:var(--sp2); justify-content:flex-end; margin-top:var(--sp6)}
-.btn:disabled{opacity:.6; cursor:default}
-
-@media (max-width:520px){
-  .wrap{padding:var(--sp4) 12px 56px}
-  h1{font-size:22px}
-  .post{grid-template-columns:32px 1fr; gap:12px}
-  .post-avatar{width:32px; height:32px}
-  .post-id{display:none}
-}
+.bar{display:flex; gap:8px; margin-bottom:16px}
+.cb-post{background:#FCFAF6; border:1px solid #D8CFBE; padding:16px}
+@media (max-width:520px){ .wrap{padding:16px 12px 56px} h1{font-size:22px} }
 </style>
 </head>
 <body>
@@ -139,44 +36,32 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
   </div>
 
   <div class="bar">
-    <button class="btn" id="btnWrite" type="button">글 쓰기</button>
+    <button class="cb-btn" id="btnWrite" type="button">글 쓰기</button>
   </div>
 
-  <div id="list"></div>
-  <nav id="pager" aria-label="페이지"></nav>
+  <div class="cb-list" id="list"></div>
+  <nav class="cb-pager" id="pager" aria-label="페이지"></nav>
 </div>
 
-<dialog id="writeDlg" aria-labelledby="writeTitle">
-  <form id="writeForm" method="dialog" novalidate>
-    <h2 id="writeTitle">글 쓰기</h2>
-
-    <label for="fAuthor">이름 <span class="c" id="cAuthor"></span></label>
-    <input id="fAuthor" type="text" placeholder="익명" autocomplete="off">
-
-    <label for="fTitle">제목 <span class="c" id="cTitle"></span></label>
-    <input id="fTitle" type="text" autocomplete="off">
-
-    <label for="fBody">내용 <span class="c" id="cBody"></span></label>
-    <textarea id="fBody" rows="8"></textarea>
-
-    <label for="fPw">비밀번호 <span class="hint">이 글을 지울 때 씁니다</span></label>
-    <input id="fPw" type="password" autocomplete="new-password">
-    <p class="warn">
-      쓰던 비밀번호를 넣지 마세요. 글 하나를 지우는 용도이고
-      계정 비밀번호만큼 안전하게 보관하지 않습니다.
-    </p>
-
-    <p class="err" id="formErr" hidden></p>
-
-    <div class="dlg-actions">
-      <button type="button" class="btn btn-quiet" id="btnCancel">취소</button>
-      <button type="submit" class="btn" id="btnSubmit">올리기</button>
-    </div>
-  </form>
-</dialog>
-
 <script src="js/01-api.js"></script>
-<script src="js/02-list.js"></script>
-<script src="js/03-write.js"></script>
+<script src="js/02-board.js"></script>
+<script>
+'use strict';
+// 독립 페이지에서는 주소에 ?page= 를 반영한다 — 새로고침·뒤로가기·공유.
+const board = createBoard({
+  list: document.getElementById('list'),
+  pager: document.getElementById('pager'),
+  count: document.getElementById('count'),
+  syncUrl: true
+});
+document.getElementById('btnWrite').addEventListener('click', board.openWrite);
+
+const pageFromUrl = () => {
+  const n = Number(new URLSearchParams(location.search).get('page'));
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+};
+addEventListener('popstate', () => board.load(pageFromUrl()));
+board.load(pageFromUrl());
+</script>
 </body>
 </html>
