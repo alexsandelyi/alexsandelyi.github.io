@@ -37,6 +37,64 @@ function cbPageNums(page, pages, span) {
   return out;
 }
 
+// ── 사람 확인 (Turnstile) ───────────────────────────────────────────
+// 로그인이 없어서 봇이 목록을 글로 채울 수 있다. Worker 가
+// TURNSTILE_SECRET 을 갖고 있으면 토큰 없는 작성을 403 으로 막으므로,
+// 화면이 위젯을 띄워 그 토큰을 만들어 줘야 한다.
+//
+// 사이트 키가 비어 있으면 통째로 꺼진다 — 짝 규칙은 01-api.js 참조.
+//
+// 스크립트는 **창을 처음 열 때** 받는다. 게시판을 보는 사람 대부분은 글을
+// 쓰지 않는데 그들에게까지 외부 스크립트를 물릴 이유가 없다.
+const CB_TURNSTILE_SRC =
+  'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+let cbTurnstileLoad = null;
+
+function cbLoadTurnstile() {
+  if (cbTurnstileLoad) return cbTurnstileLoad;
+  cbTurnstileLoad = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = CB_TURNSTILE_SRC;
+    s.async = true;
+    s.addEventListener('load', () => resolve(window.turnstile));
+    s.addEventListener('error', () => {
+      cbTurnstileLoad = null;            // 다음에 열 때 다시 받아 본다
+      reject(new Error('사람 확인을 불러오지 못했습니다'));
+    });
+    document.head.append(s);
+  });
+  return cbTurnstileLoad;
+}
+
+// 창 하나에 붙는 위젯. **토큰은 한 번 쓰면 끝난다** — 올리기가 실패하면
+// reset 으로 새로 받아야 하고, 안 그러면 두 번째 시도가 늘 403 이다.
+function cbMakeTurnstile(box) {
+  // 꺼진 상태도 켜진 상태와 **같은 모양**이어야 한다. open() 이 프로미스를
+  // 안 돌려주면 부르는 쪽의 .catch() 가 터져 창이 아예 안 열린다.
+  if (!Api.TURNSTILE_SITE_KEY) {
+    return { off: true, async open() {}, token: () => '', reset() {} };
+  }
+  let id = null, token = '';
+  return {
+    off: false,
+    async open() {
+      const api = await cbLoadTurnstile();
+      if (id !== null) { token = ''; api.reset(id); return; }
+      id = api.render(box, {
+        sitekey: Api.TURNSTILE_SITE_KEY,
+        callback: t => { token = t; },
+        'error-callback': () => { token = ''; },
+        'expired-callback': () => { token = ''; }
+      });
+    },
+    token: () => token,
+    reset() {
+      token = '';
+      if (id !== null && window.turnstile) window.turnstile.reset(id);
+    }
+  };
+}
+
 // 글쓰기 창을 만든다. 두 곳에서 같은 창을 쓰므로 HTML 에 적지 않고
 // 여기서 만든다 — 한쪽 페이지에만 넣어두면 다른 쪽에서 빠진다.
 //
@@ -73,6 +131,11 @@ function cbMakeDialog(onDone) {
   form.append(cbEl('p', 'cb-warn',
     '쓰던 비밀번호를 넣지 마세요. 글 하나를 지우는 용도이고 계정 ' +
     '비밀번호만큼 안전하게 보관하지 않습니다.'));
+
+  // 사이트 키가 없으면 이 칸은 비어 있고 CSS(:empty)가 통째로 숨긴다.
+  const guard = cbEl('div', 'cb-guard');
+  form.append(guard);
+  const turnstile = cbMakeTurnstile(guard);
 
   const err = cbEl('p', 'cb-err'); err.hidden = true;
   form.append(err);
@@ -111,15 +174,24 @@ function cbMakeDialog(onDone) {
     e.preventDefault();
     if (sending) return;                       // 두 번 눌러도 한 번만
     setErr('');
+    // 토큰이 아직 없으면 서버까지 갔다가 403 을 받느니 여기서 세운다.
+    // 위젯이 뜨는 데 잠깐 걸리므로 「실패」가 아니라 「기다려 달라」다.
+    if (!turnstile.off && !turnstile.token()) {
+      setErr('사람인지 확인하는 중입니다. 잠시 후 다시 눌러 주세요');
+      return;
+    }
     sending = true;
     submit.disabled = true;
     submit.textContent = '올리는 중…';
     try {
       await Api.create({ author: author.value, title: title.value,
-                         body: body.value, pw: pw.value });
+                         body: body.value, pw: pw.value,
+                         turnstile: turnstile.token() });
       dlg.close();
       onDone();
     } catch (ex) {
+      // 토큰은 한 번 쓰면 소모된다. 새로 받아야 다시 올릴 수 있다.
+      turnstile.reset();
       setErr(ex.message || '올리지 못했습니다');
     } finally {
       sending = false;
@@ -133,6 +205,9 @@ function cbMakeDialog(onDone) {
       setErr('');
       form.reset();
       paint();
+      // 지난번 토큰은 이미 소모됐다. 열 때마다 새로 받는다.
+      // 기다리지 않는다 — 위젯이 늦게 떠도 글은 먼저 쓸 수 있어야 한다.
+      turnstile.open().catch(e => setErr(e.message));
       dlg.showModal();
       title.focus();
     }

@@ -11,6 +11,16 @@
 // 비어 있으면 아래 가짜 저장소로 돈다.
 const API_BASE = '';
 
+// Turnstile 사이트 키. **비밀이 아니다** — 브라우저에 그대로 실려 나가는
+// 값이라 Public 저장소에 있어도 된다. 짝이 되는 비밀키만
+// `wrangler secret put TURNSTILE_SECRET` 으로 Cloudflare 에 둔다.
+//
+// **이 값과 Worker 의 TURNSTILE_SECRET 은 항상 같이 채우고 같이 비운다.**
+// 둘 다 비면 검사 없이 도는 로컬 개발이고, 둘 다 차면 운영이다. 비밀키만
+// 넣으면 Worker 가 토큰을 요구하는데 화면이 위젯을 안 띄워서 **글쓰기가
+// 100% 403 으로 막힌다.** 사이트 키만 넣으면 위젯만 뜨고 검사는 안 된다.
+const TURNSTILE_SITE_KEY = '';
+
 const PAGE_SIZE = 10;
 const TITLE_MAX = 100;
 const BODY_MAX = 2000;
@@ -127,6 +137,7 @@ async function request(path, options) {
 const Api = {
   PAGE_SIZE, TITLE_MAX, BODY_MAX, AUTHOR_MAX, ApiError,
   live: !!API_BASE,
+  TURNSTILE_SITE_KEY,
 
   async list(page) {
     const at = Number(page) > 0 ? Math.floor(Number(page)) : 1;
@@ -147,7 +158,9 @@ const Api = {
     return request('/api/posts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(clean)
+      // 토큰은 validate() 가 돌려주는 값이 아니라 위젯이 준 것이라 따로
+      // 붙인다. 가짜 저장소로 돌 때는 여기까지 오지 않는다.
+      body: JSON.stringify({ ...clean, turnstile: input.turnstile || '' })
     });
   },
 

@@ -175,6 +175,40 @@ console.log('\n— 연달아 쓰기 제한 —');
   env.POST_COOLDOWN_SEC = '0';
 }
 
+console.log('\n— Turnstile (비밀키가 들어간 운영 상태) —');
+{
+  // 위 절들은 TURNSTILE_SECRET 없이 돈다. 그래서 「비밀키를 넣는 순간
+  // 프런트가 토큰을 안 보내 글쓰기가 통째로 막히는」 상태를 한 번도
+  // 잡지 못했다. 여기서 검증 서버를 흉내 내 그 경로를 덮는다.
+  const realFetch = globalThis.fetch;
+  let sentToken = null;
+  globalThis.fetch = async (url, init) => {
+    sentToken = init.body.get('response');
+    return new Response(JSON.stringify({ success: sentToken === 'good-token' }),
+      { headers: { 'content-type': 'application/json' } });
+  };
+  env.TURNSTILE_SECRET = 'test-secret';
+
+  check('토큰 없으면 403', (await post({ title: '토큰 없음' }, '3.3.3.1')).status, 403);
+  check('빈 토큰도 403',
+    (await post({ title: '빈 토큰', turnstile: '' }, '3.3.3.2')).status, 403);
+  check('틀린 토큰 403',
+    (await post({ title: '틀린 토큰', turnstile: 'bad-token' }, '3.3.3.3')).status, 403);
+  check('맞는 토큰 201',
+    (await post({ title: '맞는 토큰', turnstile: 'good-token' }, '3.3.3.4')).status, 201);
+  check('토큰이 검증 서버로 그대로 넘어감', sentToken, 'good-token');
+
+  // 검증 서버에 못 닿을 때 열어두면 그때만 노려 밀어 넣을 수 있다.
+  globalThis.fetch = async () => { throw new Error('네트워크 끊김'); };
+  check('검증 서버가 죽으면 통과시키지 않는다',
+    (await post({ title: '검증 불가', turnstile: 'good-token' }, '3.3.3.5')).status, 403);
+
+  globalThis.fetch = realFetch;
+  delete env.TURNSTILE_SECRET;
+  check('비밀키를 빼면 다시 토큰 없이 된다',
+    (await post({ title: '로컬 개발' }, '3.3.3.6')).status, 201);
+}
+
 console.log('\n— 신고 —');
 {
   const t = (await post({ title: '신고 대상' })).data.id;

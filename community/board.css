@@ -94,6 +94,10 @@
   margin: 12px 0 0; font-size: 14px; color: #8A3A20;
   background: #FBE9E2; border: 1px solid #C9A08A; padding: 10px 12px;
 }
+/* Turnstile 위젯 자리. 사이트 키가 없으면 위젯을 안 그리므로 빈 칸이
+   남는데, :empty 로 접어서 여백까지 사라지게 한다. */
+.cb-guard { margin-top: 16px; }
+.cb-guard:empty { display: none; }
 .cb-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
 
 /* ── 글 보기 창 ── */
