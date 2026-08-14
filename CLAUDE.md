@@ -72,7 +72,8 @@ DNS 는 도메인 등록처에 걸어야 한다 (GitHub Pages 사용자 사이�
 | `tools/sprite-src/` | 손으로 그린 원본 일러스트. 이게 진짜 원본이다 (내려받기 폴더가 아니라) |
 | `games/soccer/CLAUDE.md` | 축구 작업 지침. **밸런스 기준선 수치와 스프라이트 실패 기록이 여기에만 있다** — 지우면 복원 불가 |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
-| `tmp/` | 패치 스크립트와 번들 추출물. gitignore |
+| `tools/patches/` | 번들 재적용 패치 7개. **번들이 재생성되면 여기서 복구한다** |
+| `tmp/` | 번들 추출물·스크린샷 등 버려도 되는 작업물. gitignore |
 | `.nojekyll` | Jekyll 우회. 이게 없을 때 Pages 빌드가 실패한 이력이 있다 |
 
 `index.html` 은 자립형이 **아니다**. 폰트·JS 는 파일 안에 박혀 있지만 위 이미지 11개는 외부 참조다.
@@ -88,7 +89,15 @@ cp 일빵-런처-확정안.html index.html
 **원본은 외부 도구가 재생성한다.** 2026-07-30 작업 중에만 두 번 통째로 바뀌었다(한 번은 웹폰트 278개가 시스템 폰트로 교체됨). 그래서:
 
 - 손으로 쓴 코드를 번들 안에 넣으면 다음 재생성 때 사라진다. 새 기능은 `games/` 처럼 번들 밖에 독립 파일로 둔다.
-- 번들을 고쳐야 하면 `tmp/patch-*.js` 스크립트로 만들어 재적용 가능하게 한다. **재생성 후에는 순서대로 다시 돌린다** — `patch-hanji.js`(테마) → `patch-hero.js`(히어로 정리) → `patch-community.js`(커뮤니티 링크). 뒤 것이 앞 것의 클래스에 기대므로 순서가 중요하고, 각 스크립트가 `--check` 로 적용 여부를 알려준다.
+- 번들을 고쳐야 하면 `tools/patches/patch-*.js` 스크립트로 만들어 재적용 가능하게 한다. **재생성 후에는 순서대로 다시 돌린다** — `patch-hanji.js`(테마) → `patch-hero.js`(히어로 정리) → `patch-community.js`(커뮤니티 링크). 뒤 것이 앞 것의 클래스에 기대므로 순서가 중요하고, 이 셋은 `--check` 로 적용 여부를 알려준다.
+
+  ```bash
+  for p in hanji hero community; do node tools/patches/patch-$p.js; done
+  ```
+
+  `patch-fonts` `patch-gamelink` `patch-responsive` `patch-splash` 는 2026-07-30 에 한 번 적용해 지금 원본에 이미 들어 있다. 재생성으로 되돌아갔을 때를 위해 남겨둔 것이고 `--check` 가 없다 — 이미 적용된 상태에서 돌리면 `매칭 0건` 으로 멈춘다(파일은 안 고친다). **`patch-fonts` 만은 예외로 조건 없이 다시 쓴다** — 내용은 같지만 mtime 이 바뀐다.
+
+  경로는 스크립트 위치 기준(`__dirname/../..`)이라 어느 디렉터리에서 불러도 저장소 루트의 원본을 잡는다.
 - 작업 시작 전 파일 크기·mtime 을 확인한다. 내가 쓰지 않았는데 바뀌어 있으면 사용자에게 먼저 알린다.
 
 ### 번들 구조와 함정
@@ -154,7 +163,7 @@ SHA-256 + 글마다 다른 소금값 + 서버 후추값이다. bcrypt 나 반복
 node worker/test.mjs   # 52항목. D1 대신 node:sqlite, 핸들러는 배포될 코드 그대로
 ```
 
-런처 안에서도 같은 부품(`02-board.js`)이 돈다. 번들에는 `<script src>` 네 줄만 넣고(`tmp/patch-community.js`) 로직은 전부 번들 밖에 둔다. React 가 섹션을 다시 그리면 우리 것이 지워지므로 `embed.js` 가 `MutationObserver` 로 다시 붙인다. 런처에서는 주소에 `?page=` 를 쓰지 않는다 — 게시판이 런처의 주소를 바꾸면 안 된다.
+런처 안에서도 같은 부품(`02-board.js`)이 돈다. 번들에는 `<script src>` 네 줄만 넣고(`tools/patches/patch-community.js`) 로직은 전부 번들 밖에 둔다. React 가 섹션을 다시 그리면 우리 것이 지워지므로 `embed.js` 가 `MutationObserver` 로 다시 붙인다. 런처에서는 주소에 `?page=` 를 쓰지 않는다 — 게시판이 런처의 주소를 바꾸면 안 된다.
 
 ## 게임 (`games/soccer/`)
 

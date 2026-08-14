@@ -8,6 +8,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import worker from './src/index.js';
+import {
+  TITLE_MAX, BODY_MAX, AUTHOR_MAX, PW_MIN, PW_MAX, PAGE_SIZE
+} from './src/util.js';
 
 // ── D1 흉내 ─────────────────────────────────────────────────────────
 function makeDb() {
@@ -104,6 +107,27 @@ console.log('\n— 내부 값이 새지 않는가 —');
     ['ip_hash', 'pw_hash', 'pw_salt'].some(k => k in one.data), false);
 }
 
+console.log('\n— 화면과 서버의 한도가 같은가 —');
+{
+  // 두 곳이 어긋나면 화면이 받아준 글을 서버가 거절하거나 그 반대가 된다.
+  // 실제로 화면만 UTF-16 단위로 세다가 이모지 제목을 혼자 거절했다.
+  // 01-api.js 는 클래식 스크립트라 import 가 안 되므로 소스에서 읽는다.
+  const front = readFileSync(
+    new URL('../community/js/01-api.js', import.meta.url), 'utf8');
+  const read = name => {
+    const m = front.match(new RegExp(`^const ${name} = (\\d+);`, 'm'));
+    return m ? Number(m[1]) : null;
+  };
+  for (const [name, server] of Object.entries({
+    TITLE_MAX, BODY_MAX, AUTHOR_MAX, PW_MIN, PW_MAX, PAGE_SIZE
+  })) {
+    check(`${name} 일치`, read(name), server);
+  }
+  // 글자 수는 코드포인트로 센다 — `s.length` 는 이모지를 2로 센다.
+  check('화면이 코드포인트로 센다',
+    /\[\.\.\.title\]\.length > TITLE_MAX/.test(front), true);
+}
+
 console.log('\n— 서버측 입력 검증 (클라이언트를 거치지 않아도) —');
 check('제목 없음', (await post({ title: '' })).data.error, '제목을 입력하세요');
 check('공백만 제목', (await post({ title: '   ' })).data.error, '제목을 입력하세요');
@@ -162,6 +186,51 @@ console.log('\n— 비밀번호 반복 시도 차단 —');
     (await call('DELETE', `/api/posts/${target}`, { pw: 'secret99' }, '9.9.9.9')).status, 429);
   check('다른 IP 는 영향 없음',
     (await call('DELETE', `/api/posts/${target}`, { pw: 'secret99' }, '8.8.8.8')).status, 200);
+}
+
+console.log('\n— 글 하나에 대한 전체 시도 제한 (IP 를 바꿔도) —');
+{
+  // IP 별 제한만 있으면 주소를 갈아가며 4자리를 전부 시도할 수 있다.
+  // 여기서는 한도를 낮춰 「IP 를 바꿔도 결국 막히는지」만 본다.
+  env.PW_TRY_LIMIT_ALL = '6';
+  env.PW_TRY_WINDOW_ALL_SEC = '3600';
+  const target = (await post({ title: '전체 제한 표적', pw: 'secret99' })).data.id;
+
+  // IP 를 매번 바꾼다 — 옛 코드에서는 전부 403 이고 영원히 계속됐다.
+  let blockedAt = 0;
+  for (let i = 1; i <= 8; i++) {
+    const r = await call('DELETE', `/api/posts/${target}`, { pw: 'x' + i }, `10.0.0.${i}`);
+    if (r.status === 429 && !blockedAt) blockedAt = i;
+  }
+  check('IP 를 바꿔도 7번째에 막힘', blockedAt, 7);
+  check('처음 보는 IP 도 막힌 뒤에는 못 시도',
+    (await call('DELETE', `/api/posts/${target}`, { pw: 'secret99' }, '10.9.9.9')).status, 429);
+
+  // 잠긴 글이라도 신고 처리는 돼야 한다. 안 그러면 일부러 두들겨 잠가두면
+  // 관리자가 손을 못 댄다.
+  check('관리자는 전체 잠금을 통과한다',
+    (await call('DELETE', `/api/posts/${target}`, { pw: 'admin-secret' }, '10.9.9.8')).status, 200);
+
+  check('다른 글은 영향 없음', await (async () => {
+    const other = (await post({ title: '옆 글', pw: 'mine1234' })).data.id;
+    return (await call('DELETE', `/api/posts/${other}`, { pw: 'mine1234' }, '10.9.9.7')).status;
+  })(), 200);
+
+  delete env.PW_TRY_LIMIT_ALL;
+  delete env.PW_TRY_WINDOW_ALL_SEC;
+}
+
+console.log('\n— 창을 보관 기간보다 길게 잡아도 제한이 풀리지 않는다 —');
+{
+  // throttle 기록은 하루만 남는다. 창을 그보다 길게 주면 기록이 먼저
+  // 지워져 제한이 조용히 사라지므로 설정값을 하루로 자른다.
+  env.PW_TRY_WINDOW_SEC = String(86400 * 30);      // 30일
+  const target = (await post({ title: '긴 창 표적', pw: 'secret99' })).data.id;
+  let last = 0;
+  for (let i = 0; i < 6; i++)
+    last = (await call('DELETE', `/api/posts/${target}`, { pw: 'y' + i }, '11.0.0.1')).status;
+  check('30일 창을 줘도 제한은 그대로 동작', last, 429);
+  env.PW_TRY_WINDOW_SEC = '600';
 }
 
 console.log('\n— 연달아 쓰기 제한 —');

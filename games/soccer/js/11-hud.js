@@ -160,7 +160,7 @@ function initTeamUi() {
 // ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
   ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 띄우는 센터링, 스틱 세기가 걷기부터 스프린트까지 속도를 정합니다.'
-  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">\</span> 땅볼 패스 · <span class="keys">]</span> 센터링(띄움) · <span class="keys">[</span> 선수전환<br>누른 길이가 거리를 정합니다. 땅으로 갈지 띄울지는 키로 고릅니다.';
+  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">\\</span> 땅볼 패스 · <span class="keys">]</span> 센터링(띄움) · <span class="keys">[</span> 선수전환<br>누른 길이가 거리를 정합니다. 땅으로 갈지 띄울지는 키로 고릅니다.';
 
 function showTitle() {
   state = 'title';

@@ -86,21 +86,31 @@ export function cleanPost(input) {
 // ── 속도 제한 ───────────────────────────────────────────────────────
 // throttle 표에 시도를 기록하고 최근 개수를 센다. 창 밖의 낡은 기록은
 // 쓸 때마다 조금씩 지워 표가 무한정 커지지 않게 한다.
+//
+// **기록 보관 기간이 곧 셀 수 있는 최대 창이다.** 이보다 긴 창을 설정하면
+// 기록이 먼저 지워져 제한이 조용히 풀린다. 그래서 이 값을 밖으로 내보내고
+// index.js 가 설정값을 여기에 맞춰 자른다.
+export const THROTTLE_RETAIN_SEC = 86400;
+
 export async function tooMany(db, key, windowSec, limit) {
-  const since = Date.now() - windowSec * 1000;
+  const since = Date.now() - Math.min(windowSec, THROTTLE_RETAIN_SEC) * 1000;
   const row = await db.prepare(
     'SELECT COUNT(*) AS n FROM throttle WHERE key = ? AND at > ?'
   ).bind(key, since).first();
   return (row && row.n ? row.n : 0) >= limit;
 }
 
-export async function note(db, key) {
+// 키를 여러 개 받는다. 한 시도를 「이 IP 의 시도」와 「이 글의 시도」로
+// 동시에 세야 해서다 — 두 번 부르면 batch 도 두 번이고 청소도 두 번이다.
+export async function note(db, ...keys) {
   const now = Date.now();
   await db.batch([
-    db.prepare('INSERT INTO throttle (key, at) VALUES (?, ?)').bind(key, now),
-    // 하루 지난 기록은 버린다. 매 쓰기마다 조금씩 치우는 방식이라
+    ...keys.map(k =>
+      db.prepare('INSERT INTO throttle (key, at) VALUES (?, ?)').bind(k, now)),
+    // 보관 기간이 지난 기록은 버린다. 매 쓰기마다 조금씩 치우는 방식이라
     // 따로 청소 작업을 돌릴 필요가 없다.
-    db.prepare('DELETE FROM throttle WHERE at < ?').bind(now - 86400000)
+    db.prepare('DELETE FROM throttle WHERE at < ?')
+      .bind(now - THROTTLE_RETAIN_SEC * 1000)
   ]);
 }
 

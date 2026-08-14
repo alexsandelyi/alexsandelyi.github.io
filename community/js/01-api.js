@@ -21,10 +21,14 @@ const API_BASE = '';
 // 100% 403 으로 막힌다.** 사이트 키만 넣으면 위젯만 뜨고 검사는 안 된다.
 const TURNSTILE_SITE_KEY = '';
 
+// worker/src/util.js 의 같은 이름 상수와 값이 맞아야 한다. 어긋나면 화면이
+// 받아준 글을 서버가 거절하거나 그 반대가 된다.
 const PAGE_SIZE = 10;
 const TITLE_MAX = 100;
 const BODY_MAX = 2000;
 const AUTHOR_MAX = 20;
+const PW_MIN = 4;
+const PW_MAX = 64;
 
 // 화면이 받는 오류는 항상 이 모양이다 — 어디서 났든 같게 다룬다.
 class ApiError extends Error {
@@ -103,17 +107,25 @@ async function fakeRemove(id, pw) {
 }
 
 // ── 공통 ────────────────────────────────────────────────────────────
+// **글자 수는 코드포인트로 센다** — `[...s].length`. `s.length` 는 UTF-16
+// 단위라 이모지 하나를 2로 세서, 서버(util.js cleanPost)와 글자 수 표시
+// (02-board.js)가 「60/100」이라고 하는데 여기서만 120으로 보고 거절했다.
+// 세 곳이 같은 방식으로 세야 한다.
+//
+// 비밀번호만 `.length` 다. 세는 게 아니라 서버와 **같은 잣대**를 쓰는 것이
+// 목적이고 서버도 UTF-16 단위로 잰다.
 function validate(input) {
   const title = (input.title || '').trim();
   const body = (input.body || '').trim();
   const author = (input.author || '').trim();
   const pw = input.pw || '';
   if (!title) throw new ApiError('제목을 입력하세요', 400);
-  if (title.length > TITLE_MAX) throw new ApiError(`제목은 ${TITLE_MAX}자까지입니다`, 400);
+  if ([...title].length > TITLE_MAX) throw new ApiError(`제목은 ${TITLE_MAX}자까지입니다`, 400);
   if (!body) throw new ApiError('내용을 입력하세요', 400);
-  if (body.length > BODY_MAX) throw new ApiError(`내용은 ${BODY_MAX}자까지입니다`, 400);
-  if (author.length > AUTHOR_MAX) throw new ApiError(`이름은 ${AUTHOR_MAX}자까지입니다`, 400);
-  if (pw.length < 4) throw new ApiError('비밀번호는 4자 이상이어야 합니다', 400);
+  if ([...body].length > BODY_MAX) throw new ApiError(`내용은 ${BODY_MAX}자까지입니다`, 400);
+  if ([...author].length > AUTHOR_MAX) throw new ApiError(`이름은 ${AUTHOR_MAX}자까지입니다`, 400);
+  if (pw.length < PW_MIN) throw new ApiError(`비밀번호는 ${PW_MIN}자 이상이어야 합니다`, 400);
+  if (pw.length > PW_MAX) throw new ApiError('비밀번호가 너무 깁니다', 400);
   return { title, body, author, pw };
 }
 

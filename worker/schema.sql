@@ -26,12 +26,15 @@ CREATE INDEX IF NOT EXISTS idx_posts_ip
   ON posts (ip_hash, created_at DESC);
 
 -- 속도 제한·비밀번호 시도 횟수를 한 표로 센다.
--- key 예: 'post:<ip_hash>', 'pw:<post_id>:<ip_hash>'
+-- key 예: 'post:<ip_hash>', 'pw:<post_id>:<ip_hash>', 'pw:<post_id>'
 CREATE TABLE IF NOT EXISTS throttle (
   key TEXT    NOT NULL,
   at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_throttle ON throttle (key, at);
+-- 청소용. note() 가 쓸 때마다 도는 `DELETE ... WHERE at < ?` 는 위의
+-- (key, at) 인덱스를 못 탄다 — 선두 열이 key 라서다.
+CREATE INDEX IF NOT EXISTS idx_throttle_at ON throttle (at);
 
 -- 신고. 남의 글을 받는 이상 필요하다.
 CREATE TABLE IF NOT EXISTS reports (

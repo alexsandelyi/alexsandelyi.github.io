@@ -12,7 +12,7 @@
 // 로그인이 없다. 신원 대신 글마다 받은 비밀번호로 본인을 확인한다.
 
 import {
-  PAGE_SIZE, REASON_MAX,
+  PAGE_SIZE, REASON_MAX, THROTTLE_RETAIN_SEC,
   json, fail, cors,
   sha256, randomHex, hashPw, hashIp, sameHash,
   cleanPost, tooMany, note, turnstileOk, publicPost
@@ -107,22 +107,41 @@ async function createPost(env, req, ip) {
 // ── 본인 확인 ───────────────────────────────────────────────────────
 // 글 비밀번호가 맞거나, 관리자 비밀번호면 통과. 틀린 시도는 세어서 막는다.
 // 4자리 비밀번호는 반복 시도로 금방 뚫린다.
+//
+// **두 가지를 센다.** IP 별 제한만 두면 주소를 바꿔가며 얼마든지 두들길 수
+// 있다 — IP 당 5회면 2000개로 4자리 1만 가지를 전부 시도할 수 있고, IPv6
+// 에서는 어렵지 않다. 그래서 글 하나에 대한 전체 시도도 함께 센다.
+//
+// 창은 THROTTLE_RETAIN_SEC 로 자른다. 그보다 길게 잡으면 기록이 먼저
+// 지워져 제한이 조용히 풀린다 (util.js 참조).
 async function authorize(env, row, given, ipHash) {
-  const key = `pw:${row.id}:${ipHash}`;
+  const ipKey = `pw:${row.id}:${ipHash}`;
+  const allKey = `pw:${row.id}`;
+  const cap = (v, d) => Math.min(cfg(v, d), THROTTLE_RETAIN_SEC);
   const limit = cfg(env.PW_TRY_LIMIT, 5);
-  const windowSec = cfg(env.PW_TRY_WINDOW_SEC, 600);
-  if (await tooMany(env.DB, key, windowSec, limit)) {
+  const windowSec = cap(env.PW_TRY_WINDOW_SEC, 600);
+  const allLimit = cfg(env.PW_TRY_LIMIT_ALL, 60);
+  const allWindowSec = cap(env.PW_TRY_WINDOW_ALL_SEC, 3600);
+
+  if (await tooMany(env.DB, ipKey, windowSec, limit)) {
     return { error: '시도가 너무 많습니다. 잠시 후 다시 시도해 주세요', status: 429 };
   }
 
   const pw = String(given || '');
+  // 관리자는 전체 잠금에 걸리지 않는다. 걸리면 누군가 일부러 글을 두들겨
+  // 잠가둔 상태에서 신고 처리를 못 한다. IP 제한은 위에서 이미 받았으므로
+  // 관리자 비밀번호 자체를 무한히 시도할 수는 없다.
   if (env.ADMIN_PW && pw && sameHash(await sha256(pw), await sha256(env.ADMIN_PW))) {
     return { admin: true };
+  }
+
+  if (await tooMany(env.DB, allKey, allWindowSec, allLimit)) {
+    return { error: '이 글에 시도가 너무 많았습니다. 잠시 후 다시 시도해 주세요', status: 429 };
   }
   const hash = await hashPw(row.pw_salt, env.PEPPER || '', pw);
   if (sameHash(hash, row.pw_hash)) return { admin: false };
 
-  await note(env.DB, key);
+  await note(env.DB, ipKey, allKey);
   return { error: '비밀번호가 맞지 않습니다', status: 403 };
 }
 
