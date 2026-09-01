@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F4EFE4">
+  <title>AI 토론장 — 일빵</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="../" aria-label="일빵 런처로 돌아가기">일빵</a>
+      <a class="back-link" href="../">런처로 돌아가기</a>
+    </header>
+
+    <section class="page-intro" aria-labelledby="page-title">
+      <p class="eyebrow">AI DISCUSSION ROOM</p>
+      <h1 id="page-title">AI 토론장</h1>
+      <p>토론자 수와 대화명을 정한 뒤, 사회자가 시작하면 대화가 열립니다.</p>
+    </section>
+
+    <section class="setup-card" id="setupCard" aria-labelledby="setup-title">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">SETUP</p>
+          <h2 id="setup-title">토론 준비</h2>
+        </div>
+        <span class="progress-label" id="progressLabel">1 / 2</span>
+      </div>
+
+      <ol class="steps" aria-label="토론장 설정 단계">
+        <li class="step is-current" data-step-indicator="1">
+          <span class="step-number">01</span>
+          <span><strong>토론자 수</strong><small>참여 인원 정하기</small></span>
+        </li>
+        <li class="step" data-step-indicator="2">
+          <span class="step-number">02</span>
+          <span><strong>대화명</strong><small>역할별 이름 배치</small></span>
+        </li>
+      </ol>
+
+      <form id="setupForm" novalidate>
+        <div class="step-panel" data-step-panel="1">
+          <div class="panel-copy">
+            <h3>토론자는 몇 명인가요?</h3>
+            <p>사회자는 토론자 수에 포함되지 않습니다.</p>
+          </div>
+          <div class="discussion-fields">
+            <label class="field-label" for="topicInput">토론 주제</label>
+            <input id="topicInput" type="text" maxlength="200" value="AI는 인간의 일자리를 줄이는가?" placeholder="토론 주제를 입력하세요">
+            <label class="field-label" for="moderatorRules">사회자 AI 규칙</label>
+            <textarea id="moderatorRules" rows="4" maxlength="2000" placeholder="예: 존댓말을 사용하고, 한 번에 한 명씩 발언시키며, 3라운드 뒤 결론을 요약하세요.">존댓말을 사용하고, 한 번에 한 명씩 발언시키며, 각 발언은 500자 이내로 진행하세요.</textarea>
+            <p class="hint">토론 종료 조건은 사회자 CLI 터미널에서 토론 시작 직전에 사용자에게 묻습니다. 사회자 AI가 그 조건을 충족했다고 판단하면 토론을 종료합니다.</p>
+          </div>
+          <div class="count-display"><output id="countValue" for="participantCount">3명</output></div>
+          <input id="participantCount" type="range" min="3" max="100" value="3" step="1" aria-describedby="countHint">
+          <div class="range-labels"><span>3명</span><span>100명</span></div>
+          <p class="hint" id="countHint">사회자 1명과 토론자 3명이 대화에 참여합니다.</p>
+        </div>
+
+        <div class="step-panel" data-step-panel="2" hidden>
+          <div class="panel-copy panel-copy-row">
+            <div>
+              <h3>역할별 대화명을 선택하세요</h3>
+              <p>한 번 선택한 대화명은 다른 역할에서 다시 고를 수 없습니다.</p>
+            </div>
+            <output class="assignment-count" id="assignmentCount">0 / 4 선택</output>
+          </div>
+          <div class="role-grid" id="roleAssignments"></div>
+        </div>
+
+        <div class="form-actions">
+          <button class="button button-quiet" id="backButton" type="button" hidden>이전</button>
+          <button class="button button-primary" id="nextButton" type="button">다음: 대화명 선택</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="chat-card" id="chatCard" aria-labelledby="chat-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">LIVE ROOM</p>
+          <h2 id="chat-title">토론 대화</h2>
+        </div>
+        <span class="status-pill" id="chatStatus">시작 전</span>
+      </div>
+
+      <div class="chat-layout">
+        <aside class="roster-panel" aria-labelledby="roster-title">
+          <div class="roster-heading">
+            <h3 id="roster-title">참여자</h3>
+            <span id="rosterCount">0명</span>
+          </div>
+          <div class="moderator-card">
+            <span class="role-badge">사회자</span>
+            <strong id="moderatorName">-</strong>
+            <small>시작 권한이 있습니다</small>
+          </div>
+          <label class="field-label" for="speakerSelect">현재 발언자</label>
+          <select id="speakerSelect" disabled></select>
+          <ul class="roster-list" id="rosterList"></ul>
+        </aside>
+
+        <div class="conversation-panel">
+          <div class="messages" id="messages" aria-live="polite" aria-atomic="false">
+            <div class="empty-chat" id="emptyChat">
+              <span class="empty-mark">○</span>
+              <strong>아직 대화가 시작되지 않았습니다.</strong>
+              <p>사회자가 시작 버튼을 누르면 채팅창이 활성화됩니다.</p>
+            </div>
+          </div>
+          <form class="composer" id="chatForm">
+            <label class="sr-only" for="messageInput">메시지 입력</label>
+            <textarea id="messageInput" rows="2" maxlength="1000" placeholder="대화를 입력하세요" disabled></textarea>
+            <button class="button button-primary send-button" id="sendButton" type="submit" disabled>보내기</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="chat-actions">
+        <p id="chatHint">사회자 대화명을 확인하고 시작을 눌러 주세요.</p>
+        <div>
+          <button class="button button-primary" id="startButton" type="button">사회자로 시작</button>
+          <button class="button button-quiet" id="resetButton" type="button">다시 설정</button>
+        </div>
+      </div>
+      <p class="relay-status" id="relayStatus" role="status">로컬 중계 서버 확인 전</p>
+    </section>
+
+    <p class="local-note">로컬 실험 모드에서는 이 컴퓨터의 Codex·Gemini 터미널이 중계 서버에 연결되어 토론자로 참여합니다. 중계 서버가 없으면 브라우저만으로도 대화 흐름을 시험할 수 있습니다.</p>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>
