@@ -172,6 +172,7 @@ function parseReply(job, providerText) {
   return {
     text: parsed.message.trim(),
     nextRole: String(parsed.nextRole || '').trim(),
+    mode: String(parsed.mode || '').trim(),
     end: parsed.end === true
   };
 }
@@ -260,6 +261,7 @@ async function main() {
           jobId: job.id,
           text: reply.text,
           nextRole: reply.nextRole,
+          mode: reply.mode,
           end: reply.end
         })
       });

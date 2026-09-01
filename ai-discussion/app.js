@@ -7,10 +7,15 @@ const state = {
   participantCount: 3,
   assignments: new Map(),
   started: false,
+  finished: false,
   starting: false,
   remote: false,
   roomId: null,
   moderatorCondition: '',
+  phase: 'waiting',
+  freeTalkMinutes: 0,
+  freeTalkUntil: 0,
+  progressTimer: null,
   eventSource: null,
   remoteMessageIds: new Set()
 };
@@ -35,6 +40,7 @@ const speakerSelect = $('#speakerSelect');
 const startButton = $('#startButton');
 const resetButton = $('#resetButton');
 const chatStatus = $('#chatStatus');
+const freeTalkClock = $('#freeTalkClock');
 const chatHint = $('#chatHint');
 const relayStatus = $('#relayStatus');
 const messages = $('#messages');
@@ -59,6 +65,55 @@ function syncCountText() {
 function setRelayStatus(text, className = '') {
   relayStatus.textContent = text;
   relayStatus.className = `relay-status${className ? ` ${className}` : ''}`;
+}
+
+function formatClock(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function updateRoomProgress(room = {}) {
+  state.phase = room.phase || state.phase || 'waiting';
+  if (Object.hasOwn(room, 'freeTalkMinutes')) state.freeTalkMinutes = Number(room.freeTalkMinutes || 0);
+  if (Object.hasOwn(room, 'freeTalkUntil')) state.freeTalkUntil = Number(room.freeTalkUntil || 0);
+  window.clearInterval(state.progressTimer);
+  state.progressTimer = null;
+
+  const renderClock = () => {
+    const remaining = Math.max(0, Math.ceil((state.freeTalkUntil - Date.now()) / 1000));
+    const activeFreeTalk = state.started && !state.finished && state.freeTalkUntil && remaining > 0;
+    if (activeFreeTalk) {
+      freeTalkClock.hidden = false;
+      freeTalkClock.textContent = `자유 토론 ${formatClock(remaining)}`;
+      return true;
+    }
+    freeTalkClock.hidden = !state.freeTalkUntil || state.finished;
+    if (state.freeTalkUntil && !state.finished && remaining === 0) {
+      freeTalkClock.textContent = '자유 토론 시간 종료';
+    }
+    return false;
+  };
+
+  if (state.finished || room.finished || state.phase === 'finished') {
+    chatStatus.textContent = '종료';
+    chatStatus.classList.remove('is-live');
+  } else if (!state.started) {
+    chatStatus.textContent = '시작 전';
+    chatStatus.classList.remove('is-live');
+  } else if (state.phase === 'free-talk') {
+    chatStatus.textContent = '자유 토론';
+    chatStatus.classList.add('is-live');
+  } else {
+    chatStatus.textContent = state.phase === 'review' ? '사회자 정리' : '사회자 진행';
+    chatStatus.classList.add('is-live');
+  }
+
+  if (renderClock()) {
+    state.progressTimer = window.setInterval(() => {
+      if (!renderClock()) window.clearInterval(state.progressTimer);
+    }, 1000);
+  }
 }
 
 function showStep(step) {
@@ -190,8 +245,11 @@ function renderChat() {
   });
 
   speakerSelect.value = moderator;
-  chatStatus.textContent = '시작 전';
-  chatStatus.classList.remove('is-live');
+  state.finished = false;
+  state.phase = 'waiting';
+  state.freeTalkMinutes = 0;
+  state.freeTalkUntil = 0;
+  updateRoomProgress();
   chatHint.textContent = `사회자 ${moderator}님이 시작을 누르면 채팅창이 활성화됩니다.`;
   startButton.textContent = `${moderator}로 시작`;
   startButton.disabled = false;
@@ -238,6 +296,9 @@ function connectRoomEvents() {
   state.eventSource.addEventListener('snapshot', event => {
     const snapshot = JSON.parse(event.data);
     state.moderatorCondition = snapshot.moderatorCondition || '';
+    state.started = Boolean(snapshot.started);
+    state.finished = Boolean(snapshot.finished);
+    updateRoomProgress(snapshot);
     updateAgentStatus(snapshot.agents || []);
     (snapshot.messages || []).forEach(handleRemoteMessage);
   });
@@ -253,6 +314,9 @@ function connectRoomEvents() {
   state.eventSource.addEventListener('room', event => {
     const room = JSON.parse(event.data);
     state.moderatorCondition = room.moderatorCondition || '';
+    state.started = Boolean(room.started);
+    state.finished = Boolean(room.finished);
+    updateRoomProgress(room);
     updateAgentStatus(room.agents || []);
     if (room.finished) finishRemoteChat(room.finishReason);
   });
@@ -268,6 +332,9 @@ function connectRoomEvents() {
 
 function finishRemoteChat(reason = 'moderator') {
   state.started = false;
+  state.finished = true;
+  state.phase = 'finished';
+  updateRoomProgress({ finished: true, phase: 'finished' });
   chatStatus.textContent = '종료';
   chatStatus.classList.remove('is-live');
   startButton.textContent = '토론 종료됨';
@@ -303,13 +370,16 @@ async function createRemoteRoom() {
     method: 'POST',
     body: JSON.stringify({
       topic: topicInput.value.trim() || '자유 토론',
-      rules: moderatorRules.value.trim() || '존댓말을 사용하고, 한 번에 한 명씩 발언하세요.',
+      rules: moderatorRules.value.trim() || '존댓말을 사용하고, 한 번에 한 명씩 발언하세요. 5분동안 자유로운 토론을 진행하세요.',
       roster
     })
   });
   state.roomId = data.room.id;
   state.remote = true;
   state.moderatorCondition = data.room.moderatorCondition || '';
+  state.freeTalkMinutes = Number(data.room.freeTalkMinutes || 0);
+  state.freeTalkUntil = Number(data.room.freeTalkUntil || 0);
+  state.phase = data.room.phase || 'waiting';
   state.remoteMessageIds.clear();
   connectRoomEvents();
   updateAgentStatus(data.room.agents || []);
@@ -317,6 +387,8 @@ async function createRemoteRoom() {
 
 function applyLiveUi() {
   state.started = true;
+  state.finished = false;
+  if (!state.remote) state.phase = 'moderated';
   chatStatus.textContent = '진행 중';
   chatStatus.classList.add('is-live');
   startButton.textContent = state.remote ? '토론 종료' : '토론 진행 중';
@@ -376,14 +448,20 @@ function closeRoomEvents() {
 
 function resetRoom() {
   closeRoomEvents();
+  window.clearInterval(state.progressTimer);
+  state.progressTimer = null;
   state.step = 1;
   state.participantCount = 3;
   state.assignments.clear();
   state.started = false;
+  state.finished = false;
   state.starting = false;
   state.remote = false;
   state.roomId = null;
   state.moderatorCondition = '';
+  state.phase = 'waiting';
+  state.freeTalkMinutes = 0;
+  state.freeTalkUntil = 0;
   state.remoteMessageIds.clear();
   participantCount.value = '3';
   syncCountText();

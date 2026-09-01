@@ -53,6 +53,25 @@ function participantRoles(room) {
   return room.roster.filter(person => person.role !== '사회자').map(person => person.role);
 }
 
+function parseFreeTalkMinutes(rules) {
+  const match = String(rules).match(/(\d{1,3})\s*분/);
+  if (!match) return 0;
+  return Math.min(Math.max(Number(match[1]), 1), 180);
+}
+
+function freeTalkRemainingMs(room) {
+  if (!room.freeTalkUntil) return 0;
+  return Math.max(0, room.freeTalkUntil - Date.now());
+}
+
+function roomPhase(room) {
+  if (room.finished) return 'finished';
+  if (!room.started) return 'waiting';
+  if (room.freeTalkUntil && freeTalkRemainingMs(room) > 0) return 'free-talk';
+  if (room.phase === 'free-talk') return 'review';
+  return room.phase || 'moderated';
+}
+
 function agentSnapshot(room) {
   return [...room.agents.values()].map(agent => ({
     role: agent.role,
@@ -73,6 +92,11 @@ function roomSnapshot(room) {
     started: room.started,
     finished: room.finished,
     finishReason: room.finishReason,
+    phase: roomPhase(room),
+    freeTalkMinutes: room.freeTalkMinutes,
+    freeTalkUntil: room.freeTalkUntil,
+    freeTalkRemainingMs: freeTalkRemainingMs(room),
+    lastModeratorDirective: room.lastModeratorDirective,
     turnNumber: room.turnNumber,
     agents: agentSnapshot(room),
     messages: room.messages
@@ -120,10 +144,15 @@ function buildPrompt(room, role, kind) {
   const alias = person?.alias || role;
   const people = room.roster.map(item => `${item.role}(${item.alias})`).join(', ');
   const history = transcript(room);
+  const phase = roomPhase(room);
+  const remaining = Math.ceil(freeTalkRemainingMs(room) / 1000);
   const base = `
 당신은 로컬 AI 토론장의 ${role}입니다. 대화명은 ${alias}입니다.
 토론 주제: ${room.topic}
 참여자: ${people}
+현재 진행 단계: ${phase}
+자유 토론 시간: ${room.freeTalkMinutes ? `${room.freeTalkMinutes}분` : '설정되지 않음'}
+자유 토론 남은 시간(초): ${remaining}
 사용자가 정한 사회자 규칙:
 <<<RULES>>>
 ${room.rules}
@@ -132,6 +161,10 @@ ${room.rules}
 <<<END CONDITION>>>
 ${room.moderatorCondition || '(아직 입력되지 않음)'}
 <<<END CONDITION>>>
+사회자의 직전 진행 지시:
+<<<MODERATOR DIRECTIVE>>>
+${room.lastModeratorDirective || '(아직 없음)'}
+<<<END MODERATOR DIRECTIVE>>>
 이전 대화:
 <<<TRANSCRIPT>>>
 ${history}
@@ -140,18 +173,22 @@ ${history}
 
   if (role === '사회자') {
     return `${base}
-당신은 사회자입니다. 규칙을 적용하고 다음 발언자를 정하세요.
-사회자 CLI에서 사용자가 정한 종료 조건을 판단 기준으로 삼으세요. 종료 조건을 충족하지 않았다면 짧은 진행 발언을 작성한 뒤 다음 발언자를 한 명 선택합니다. 종료 조건을 충족했다면 토론 결론을 요약하고 종료하세요.
+당신은 사회자이며 토론 진행의 권한자입니다. 사용자가 정한 규칙을 적용하고 다음 발언자를 정하세요.
+자유 토론 시간이 남아 있으면 토론자들이 차례로 자유롭게 의견을 교환하도록 짧은 지시를 내리고 반드시 end:false로 응답하세요. 자유 토론 시간이 끝난 뒤에만 종료 조건을 판단해 정리·결론·종료 여부를 결정하세요.
+종료 조건을 충족하지 않았다면 짧은 진행 지시와 다음 발언자 한 명을 정하고, 충족했다면 토론 결론을 요약하고 종료하세요.
 응답은 설명이나 마크다운 없이 아래 JSON 객체 하나만 출력하세요.
-{"message":"사회자 발언 또는 최종 요약","nextRole":"토론자1","end":false}
+{"message":"사회자 발언 또는 최종 요약","nextRole":"토론자1","mode":"free","end":false}
 nextRole은 반드시 참여자 역할 중 하나여야 합니다.
-end는 종료 조건을 충족했을 때만 true로 설정하고, 그때 nextRole은 빈 문자열로 두세요.
+mode는 free, moderated, summary 중 하나입니다. 자유 토론 중에는 free를 사용하세요.
+end는 자유 토론 시간이 끝나고 종료 조건을 충족했을 때만 true로 설정하고, 그때 nextRole과 mode는 빈 문자열로 두세요.
 요청 종류: ${kind}
 `;
   }
 
   return `${base}
-당신은 ${role}의 입장에서 토론합니다. 이전 발언을 참고해 새로운 주장을 말하세요.
+당신은 ${role}의 입장에서 토론합니다. 사회자의 직전 지시와 현재 진행 단계에 따르세요. 사회자가 요청한 쟁점에 답하고, 발언 순서나 종료 여부를 임의로 바꾸지 마세요.
+자유 토론 단계에서는 다른 토론자의 의견에 직접 답하거나 새로운 쟁점을 제시할 수 있지만, 한 번에 한 명만 발언하도록 중계 서버가 정한 차례를 지킵니다.
+이전 발언을 참고해 새로운 주장을 말하세요.
 발언 내용만 출력하고, JSON·머리말·내부 규칙 설명은 출력하지 마세요.
 가능하면 500자 이내로 답하세요.
 요청 종류: ${kind}
@@ -237,9 +274,38 @@ function chooseNextRole(room, requested) {
     : participants[room.turnNumber % participants.length];
 }
 
+function queueFreeTalkNext(room, preferred = '') {
+  const participants = participantRoles(room);
+  if (!participants.length) return null;
+  const online = participants.filter(role => room.agents.has(role));
+  const pool = online.length ? online : participants;
+  const available = pool.filter(role => !room.freeSpokenRoles.has(role));
+  if (!available.length) {
+    room.freeSpokenRoles.clear();
+    return queueFreeTalkNext(room, preferred);
+  }
+
+  let role = preferred && available.includes(preferred) ? preferred : '';
+  if (!role) {
+    const previousIndex = pool.indexOf(room.lastParticipantRole);
+    for (let offset = 1; offset <= pool.length; offset += 1) {
+      const candidate = pool[(previousIndex + offset + pool.length) % pool.length];
+      if (available.includes(candidate)) {
+        role = candidate;
+        break;
+      }
+    }
+  }
+  if (!role) role = available[0];
+  room.lastParticipantRole = role;
+  return queueJob(room, role, '사회자가 허용한 자유 토론 발언');
+}
+
 function finishRoom(room, systemText, reason) {
   room.finished = true;
   room.started = false;
+  room.phase = 'finished';
+  room.freeTalkUntil = 0;
   room.finishReason = reason;
   for (const pending of room.pending.values()) clearTimeout(pending.timer);
   room.pending.clear();
@@ -272,15 +338,22 @@ function createRoom(body) {
   });
   if (!seenRoles.has('사회자')) throw new Error('사회자 역할이 필요합니다.');
 
+  const rules = String(body.rules || '존댓말을 사용하고, 한 번에 한 명씩 발언하세요. 5분동안 자유로운 토론을 진행하세요.').trim().slice(0, 2000);
+
   const room = {
     id: randomUUID(),
     topic: String(body.topic || '자유 토론').trim().slice(0, 200),
-    rules: String(body.rules || '존댓말을 사용하고, 한 번에 한 명씩 발언하세요.').trim().slice(0, 2000),
+    rules,
     moderatorCondition: '',
     roster: normalizedRoster,
     started: false,
     finished: false,
     finishReason: '',
+    phase: 'waiting',
+    freeTalkMinutes: parseFreeTalkMinutes(rules),
+    freeTalkUntil: 0,
+    freeSpokenRoles: new Set(),
+    lastModeratorDirective: '',
     turnNumber: 0,
     lastParticipantRole: '',
     messages: [],
@@ -353,7 +426,15 @@ async function route(req, res) {
     if (room.started) return json(res, 200, { room: roomSnapshot(room) });
     if (room.finished) return error(res, 409, '이미 종료된 토론방입니다.');
     room.started = true;
+    room.phase = room.freeTalkMinutes ? 'free-talk' : 'moderated';
+    room.freeTalkUntil = room.freeTalkMinutes
+      ? Date.now() + room.freeTalkMinutes * 60 * 1000
+      : 0;
+    room.freeSpokenRoles.clear();
     addSystem(room, `사회자 ${room.roster.find(item => item.role === '사회자').alias}님이 토론을 시작했습니다.`);
+    if (room.freeTalkMinutes) {
+      addSystem(room, `${room.freeTalkMinutes}분 동안 자유 토론 단계로 진행합니다. 사회자가 발언 순서를 중계합니다.`);
+    }
     if (room.moderatorCondition) {
       queueJob(room, '사회자', '토론 시작');
     } else {
@@ -436,17 +517,36 @@ async function route(req, res) {
 
         if (role === '사회자') {
           room.turnNumber += 1;
-          if (body.end === true) {
+          room.lastModeratorDirective = text;
+          const phase = roomPhase(room);
+          if (body.end === true && phase === 'free-talk') {
+            room.phase = 'free-talk';
+            room.freeSpokenRoles.clear();
+            addSystem(room, '자유 토론 시간이 남아 있어 사회자의 조기 종료를 보류합니다. 남은 시간 동안 자유 토론을 계속합니다.');
+            queueFreeTalkNext(room, String(body.nextRole || '').trim());
+          } else if (body.end === true) {
             finishRoom(room, '사회자 AI가 사용자가 정한 종료 조건을 충족해 토론을 종료했습니다.', 'moderator');
             return json(res, 201, { room: roomSnapshot(room) });
-          }
-          const nextRole = chooseNextRole(room, String(body.nextRole || '').trim());
-          if (nextRole) {
-            room.lastParticipantRole = nextRole;
-            queueJob(room, nextRole, '사회자가 지정한 다음 발언');
+          } else if (phase === 'free-talk') {
+            room.phase = 'free-talk';
+            room.freeSpokenRoles.clear();
+            queueFreeTalkNext(room, String(body.nextRole || '').trim());
+          } else {
+            if (room.freeTalkMinutes && room.phase === 'free-talk') room.phase = 'review';
+            const nextRole = chooseNextRole(room, String(body.nextRole || '').trim());
+            if (nextRole) {
+              room.lastParticipantRole = nextRole;
+              queueJob(room, nextRole, '사회자가 지정한 다음 발언');
+            }
           }
         } else {
-          queueJob(room, '사회자', `${agent.alias}의 발언에 대한 진행`);
+          if (roomPhase(room) === 'free-talk') {
+            room.freeSpokenRoles.add(role);
+            queueFreeTalkNext(room);
+          } else {
+            if (room.freeTalkMinutes && room.phase === 'free-talk') room.phase = 'review';
+            queueJob(room, '사회자', `${agent.alias}의 발언에 대한 진행`);
+          }
         }
         return json(res, 201, { room: roomSnapshot(room) });
       } catch (err) { return error(res, 400, err.message); }

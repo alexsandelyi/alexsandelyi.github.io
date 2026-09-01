@@ -185,8 +185,10 @@ textarea:disabled { background: #F1ECE3; cursor: not-allowed; }
 .chat-actions { align-items: flex-end; padding-top: 18px; border-top: 1px solid var(--line-light); }
 .chat-actions p { margin: 0; color: var(--muted); font-size: 13px; }
 .chat-actions .button + .button { margin-left: 6px; }
+.room-progress { display: flex; align-items: center; gap: 8px; }
 .status-pill { padding: 6px 10px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .status-pill.is-live { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.free-talk-clock { padding: 6px 10px; border: 1px solid var(--accent); color: var(--accent); font-size: 12px; font-variant-numeric: tabular-nums; }
 .relay-status { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
 .relay-status.is-connected { color: var(--accent); }
 .relay-status.is-error { color: #9B3D2C; }
