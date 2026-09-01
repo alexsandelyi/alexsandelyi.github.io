@@ -254,7 +254,7 @@ function connectRoomEvents() {
     const room = JSON.parse(event.data);
     state.moderatorCondition = room.moderatorCondition || '';
     updateAgentStatus(room.agents || []);
-    if (room.finished) finishRemoteChat();
+    if (room.finished) finishRemoteChat(room.finishReason);
   });
   state.eventSource.addEventListener('error', event => {
     if (event?.data) {
@@ -266,16 +266,18 @@ function connectRoomEvents() {
   };
 }
 
-function finishRemoteChat() {
+function finishRemoteChat(reason = 'moderator') {
   state.started = false;
   chatStatus.textContent = '종료';
   chatStatus.classList.remove('is-live');
-  startButton.textContent = '토론 종료';
+  startButton.textContent = '토론 종료됨';
   startButton.disabled = true;
   speakerSelect.disabled = true;
   messageInput.disabled = true;
   sendButton.disabled = true;
-  chatHint.textContent = '사회자 AI가 사용자가 정한 종료 조건을 충족해 토론을 종료했습니다.';
+  chatHint.textContent = reason === 'user'
+    ? '사용자가 토론을 종료했습니다.'
+    : '사회자 AI가 사용자가 정한 종료 조건을 충족해 토론을 종료했습니다.';
 }
 
 function handleRemoteMessage(message) {
@@ -317,8 +319,8 @@ function applyLiveUi() {
   state.started = true;
   chatStatus.textContent = '진행 중';
   chatStatus.classList.add('is-live');
-  startButton.textContent = state.remote ? '자동 토론 진행 중' : '토론 진행 중';
-  startButton.disabled = true;
+  startButton.textContent = state.remote ? '토론 종료' : '토론 진행 중';
+  startButton.disabled = !state.remote;
   speakerSelect.disabled = state.remote;
   speakerSelect.value = state.remote ? '__user__' : speakerSelect.value;
   messageInput.disabled = false;
@@ -328,6 +330,21 @@ function applyLiveUi() {
     : '발언자를 선택하고 메시지를 입력하세요.';
   messageInput.placeholder = state.remote ? 'AI 토론에 개입할 메시지를 입력하세요' : '대화를 입력하세요';
   messageInput.focus();
+}
+
+async function stopChat() {
+  if (!state.remote || !state.roomId || !state.started) return;
+  startButton.disabled = true;
+  chatHint.textContent = '토론을 종료하는 중입니다...';
+  try {
+    await relayRequest(`/api/rooms/${encodeURIComponent(state.roomId)}/stop`, { method: 'POST' });
+  } catch (error) {
+    startButton.disabled = false;
+    chatHint.textContent = state.moderatorCondition
+      ? `사회자 종료 조건: ${state.moderatorCondition}`
+      : '사회자 CLI 터미널에서 토론 종료 조건을 입력하면 자동 토론이 시작됩니다.';
+    addSystemMessage(`토론 종료 요청에 실패했습니다. ${error.message}`);
+  }
 }
 
 async function startChat() {
@@ -393,7 +410,10 @@ nextButton.addEventListener('click', () => {
 });
 
 backButton.addEventListener('click', () => showStep(1));
-startButton.addEventListener('click', () => { void startChat(); });
+startButton.addEventListener('click', () => {
+  if (state.remote && state.started) void stopChat();
+  else void startChat();
+});
 resetButton.addEventListener('click', resetRoom);
 
 chatForm.addEventListener('submit', async event => {

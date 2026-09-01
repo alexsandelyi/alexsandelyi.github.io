@@ -72,6 +72,7 @@ function roomSnapshot(room) {
     roster: room.roster,
     started: room.started,
     finished: room.finished,
+    finishReason: room.finishReason,
     turnNumber: room.turnNumber,
     agents: agentSnapshot(room),
     messages: room.messages
@@ -236,6 +237,24 @@ function chooseNextRole(room, requested) {
     : participants[room.turnNumber % participants.length];
 }
 
+function finishRoom(room, systemText, reason) {
+  room.finished = true;
+  room.started = false;
+  room.finishReason = reason;
+  for (const pending of room.pending.values()) clearTimeout(pending.timer);
+  room.pending.clear();
+  room.jobs.clear();
+  for (const waiters of room.waiters.values()) {
+    for (const waiter of waiters) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(null);
+    }
+  }
+  room.waiters.clear();
+  addSystem(room, systemText);
+  publish(room, 'room', roomSnapshot(room));
+}
+
 function createRoom(body) {
   const roster = Array.isArray(body.roster) ? body.roster : [];
   if (roster.length < 2 || roster.length > 101) throw new Error('참여자 구성이 올바르지 않습니다.');
@@ -261,6 +280,7 @@ function createRoom(body) {
     roster: normalizedRoster,
     started: false,
     finished: false,
+    finishReason: '',
     turnNumber: 0,
     lastParticipantRole: '',
     messages: [],
@@ -357,6 +377,12 @@ async function route(req, res) {
     } catch (err) { return error(res, 400, err.message); }
   }
 
+  if (req.method === 'POST' && parts.length === 4 && parts[3] === 'stop') {
+    if (room.finished) return json(res, 200, { room: roomSnapshot(room) });
+    finishRoom(room, '사용자가 토론을 종료했습니다.', 'user');
+    return json(res, 200, { room: roomSnapshot(room) });
+  }
+
   if (req.method === 'POST' && parts.length === 4 && parts[3] === 'messages') {
     if (!room.started) return error(res, 409, '토론이 아직 시작되지 않았습니다.');
     try {
@@ -411,10 +437,7 @@ async function route(req, res) {
         if (role === '사회자') {
           room.turnNumber += 1;
           if (body.end === true) {
-            room.finished = true;
-            room.started = false;
-            addSystem(room, '사회자 AI가 사용자가 정한 종료 조건을 충족해 토론을 종료했습니다.');
-            publish(room, 'room', roomSnapshot(room));
+            finishRoom(room, '사회자 AI가 사용자가 정한 종료 조건을 충족해 토론을 종료했습니다.', 'moderator');
             return json(res, 201, { room: roomSnapshot(room) });
           }
           const nextRole = chooseNextRole(room, String(body.nextRole || '').trim());
