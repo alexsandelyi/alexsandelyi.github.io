@@ -399,6 +399,22 @@ const SELF_TEST = `
           poseSlotsValid = false;
         }
       }
+      var directionSlotsValid = DIRECTION_ORDER.length === 8 &&
+        DIRECTION_ORDER.every(function (nameD, iD) {
+          var slotD = DIRECTION_POSES[nameD];
+          return slotD && slotD[1] === 2 && slotD[0] === poseColumns + iD * 2;
+        });
+      var actionNames = ['kick', 'shoot', 'charge', 'tackle', 'block', 'header',
+        'deflect', 'gk-dive', 'gk-claim', 'gk-punt'];
+      var actionColumns = poseColumns + DIRECTION_ORDER.length * 2;
+      var actionDirectionSlotsValid = actionNames.every(function (actionName, iA) {
+        var mapA = ACTION_DIRECTION_POSES[actionName];
+        return mapA && DIRECTION_ORDER.every(function (nameA, iA2) {
+          var slotA = mapA[nameA];
+          return slotA && slotA[1] === 3 &&
+            slotA[0] === actionColumns + iA * DIRECTION_ORDER.length * 3 + iA2 * 3;
+        });
+      });
       return {
         strictMode:this.strictMode,
         offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
@@ -431,7 +447,9 @@ const SELF_TEST = `
         turnBrakeKillsDrift:turnBrakeKillsDrift,
         poseFramesReachable:poseFramesReachable,
         poseUnreachableList:poseUnreachable.join(',') || true,
-        poseSlotsValid:poseSlotsValid
+          poseSlotsValid:poseSlotsValid,
+          directionSlotsValid:directionSlotsValid,
+          actionDirectionSlotsValid:actionDirectionSlotsValid
       };
 `;
 

@@ -9,10 +9,10 @@ function draw() {
   ctx.fillStyle = '#152528';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  applyFieldTransform();
   drawPitch();
   if (offside) drawOffsideLine();
-  for (const side of [0, 1]) for (const p of teams[side]) drawPlayer(p);
+  const renderPlayers = [...teams[0], ...teams[1]].sort((a, b) => a.y - b.y);
+  for (const p of renderPlayers) drawPlayer(p);
   drawBall();
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -25,45 +25,92 @@ function draw() {
 
 function drawOffsideLine() {
   ctx.save();
-  ctx.strokeStyle = '#F2CE7A'; ctx.lineWidth = 5;
+  ctx.strokeStyle = '#F2CE7A'; ctx.lineWidth = 5 * view.dpr;
   ctx.setLineDash([18, 14]);
-  ctx.beginPath(); ctx.moveTo(offside.lineX, 0); ctx.lineTo(offside.lineX, FH); ctx.stroke();
+  strokeWorldLine(offside.lineX, 0, offside.lineX, FH);
   ctx.restore();
+}
+
+function projectedPath(points, close = false) {
+  ctx.beginPath();
+  for (let i = 0; i < points.length; i++) {
+    const p = projectWorld(points[i][0], points[i][1]);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  if (close) ctx.closePath();
+}
+
+function fillWorldRect(x, y, w, h) {
+  projectedPath([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], true);
+  ctx.fill();
+}
+
+function strokeWorldRect(x, y, w, h) {
+  projectedPath([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], true);
+  ctx.stroke();
+}
+
+function strokeWorldLine(x1, y1, x2, y2) {
+  projectedPath([[x1, y1], [x2, y2]]);
+  ctx.stroke();
+}
+
+function worldCurvePoints(cx, cy, rx, ry, start, end, segments = 56) {
+  const points = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = start + (end - start) * i / segments;
+    points.push([cx + Math.cos(t) * rx, cy + Math.sin(t) * ry]);
+  }
+  return points;
+}
+
+function strokeWorldEllipse(cx, cy, rx, ry = rx) {
+  projectedPath(worldCurvePoints(cx, cy, rx, ry, 0, Math.PI * 2));
+  ctx.closePath();
+  ctx.stroke();
+}
+
+function strokeWorldArc(cx, cy, r, start, end) {
+  projectedPath(worldCurvePoints(cx, cy, r, r, start, end, 18));
+  ctx.stroke();
 }
 
 function drawPitch() {
   ctx.fillStyle = C.turf;
-  ctx.fillRect(0, 0, FW, FH);
+  fillWorldRect(0, 0, FW, FH);
   ctx.fillStyle = C.turfAlt;
   const stripes = 14, sw = FW / stripes;
-  for (let i = 0; i < stripes; i += 2) ctx.fillRect(i * sw, 0, sw, FH);
+  for (let i = 0; i < stripes; i += 2) fillWorldRect(i * sw, 0, sw, FH);
 
-  ctx.strokeStyle = C.line; ctx.lineWidth = 4;
-  ctx.strokeRect(2, 2, FW - 4, FH - 4);
-  ctx.beginPath(); ctx.moveTo(FW / 2, 0); ctx.lineTo(FW / 2, FH); ctx.stroke();
-  ctx.beginPath(); ctx.arc(FW / 2, FH / 2, CIRCLE_R, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = C.line; ctx.lineWidth = 4 * view.dpr;
+  strokeWorldRect(2, 2, FW - 4, FH - 4);
+  strokeWorldLine(FW / 2, 0, FW / 2, FH);
+  strokeWorldEllipse(FW / 2, FH / 2, CIRCLE_R);
   ctx.fillStyle = C.line;
-  ctx.beginPath(); ctx.arc(FW / 2, FH / 2, 7, 0, Math.PI * 2); ctx.fill();
+  projectedPath(worldCurvePoints(FW / 2, FH / 2, 7, 7, 0, Math.PI * 2));
+  ctx.closePath(); ctx.fill();
 
   for (const gx of [0, FW]) {
     const dir = gx === 0 ? 1 : -1;
-    ctx.strokeRect(gx === 0 ? 0 : FW - PA_D, (FH - PA_W) / 2, PA_D, PA_W);
-    ctx.strokeRect(gx === 0 ? 0 : FW - GA_D, (FH - GA_W) / 2, GA_D, GA_W);
-    ctx.beginPath(); ctx.arc(gx + dir * PEN_SPOT, FH / 2, 7, 0, Math.PI * 2); ctx.fill();
+    strokeWorldRect(gx === 0 ? 0 : FW - PA_D, (FH - PA_W) / 2, PA_D, PA_W);
+    strokeWorldRect(gx === 0 ? 0 : FW - GA_D, (FH - GA_W) / 2, GA_D, GA_W);
+    projectedPath(worldCurvePoints(gx + dir * PEN_SPOT, FH / 2, 7, 7, 0, Math.PI * 2));
+    ctx.closePath(); ctx.fill();
   }
 
   for (const x of [0, FW]) for (const y of [0, FH]) {
     const a0 = x === 0 ? (y === 0 ? 0 : -Math.PI / 2) : (y === 0 ? Math.PI / 2 : Math.PI);
-    ctx.beginPath(); ctx.arc(x, y, 20, a0, a0 + Math.PI / 2); ctx.stroke();
+    strokeWorldArc(x, y, 20, a0, a0 + Math.PI / 2);
   }
 
   // 골문
   const gy = (FH - GOAL_H) / 2;
-  ctx.lineWidth = 10;
+  ctx.lineWidth = 10 * view.dpr;
   ctx.strokeStyle = C.home;
-  ctx.beginPath(); ctx.moveTo(3, gy); ctx.lineTo(3, gy + GOAL_H); ctx.stroke();
+  strokeWorldLine(3, gy, 3, gy + GOAL_H);
   ctx.strokeStyle = C.away;
-  ctx.beginPath(); ctx.moveTo(FW - 3, gy); ctx.lineTo(FW - 3, gy + GOAL_H); ctx.stroke();
+  strokeWorldLine(FW - 3, gy, FW - 3, gy + GOAL_H);
 }
 
 function drawRadius(physicalRadius, minDiameterPx) {
@@ -77,55 +124,55 @@ function drawPlayer(p) {
     ? (p.isGK ? C.gkHome : C.home)
     : (p.isGK ? C.gkAway : C.away);
   const r = drawRadius(R_PLAYER, DRAW_PLAYER_MIN_PX);
+  const point = projectWorld(p.x, p.y);
+  const scale = projectScaleAt(p.y);
+  const rp = r * scale;
 
   // 그림자. 스프라이트가 원보다 색 면적이 작아 예전 진하기로는 선수
   // 옆에 붙은 별개 덩어리처럼 보였다.
   ctx.fillStyle = 'rgba(0,0,0,.22)';
-  ctx.beginPath(); ctx.ellipse(p.x + r * .14, p.y + r * .18,
-    r * .92, r * .74, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(point.x + rp * .14, point.y + rp * .18,
+    rp * .92, rp * .46, 0, 0, Math.PI * 2); ctx.fill();
 
   if (!drawPlayerSprite(p, r)) {
     // 시트를 아직 못 받았거나 아예 못 받는다. 원으로 계속 돌아간다 —
     // 그림이 없다고 경기가 멈추면 안 된다.
     ctx.fillStyle = base;
-    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(point.x, point.y, rp, 0, Math.PI * 2); ctx.fill();
     if (p.blockT > 0) {
-      ctx.strokeStyle = base; ctx.lineWidth = r * .65; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(p.x, p.y - r * 1.35);
-      ctx.lineTo(p.x, p.y + r * 1.35); ctx.stroke();
+      ctx.strokeStyle = base; ctx.lineWidth = rp * .65; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(point.x, point.y - rp * 1.35);
+      ctx.lineTo(point.x, point.y + rp * 1.35); ctx.stroke();
     }
   }
 
   // 조작 중인 선수는 흰 테두리 + 위쪽 삼각 표시 (22명 중에서 찾기 쉽게)
   if (isCtrl) {
-    ctx.strokeStyle = '#F2F7F4'; ctx.lineWidth = Math.max(2, r * .18);
-    ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.22, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#F2F7F4'; ctx.lineWidth = Math.max(2 * view.dpr, rp * .18);
+    ctx.beginPath(); ctx.arc(point.x, point.y, rp * 1.22, 0, Math.PI * 2); ctx.stroke();
     ctx.save();
-    ctx.translate(p.x, p.y - r * 1.75);
-    if (view.rot) ctx.rotate(Math.PI / 2);
+    ctx.translate(point.x, point.y - rp * 1.75);
     ctx.fillStyle = '#F2F7F4';
-    const marker = r * .42;
+    const marker = rp * .42;
     ctx.beginPath(); ctx.moveTo(0, marker); ctx.lineTo(-marker, -marker * .55);
     ctx.lineTo(marker, -marker * .55); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
   if (p.yellow) {
     ctx.save();
-    ctx.translate(p.x, p.y);
-    if (view.rot) ctx.rotate(Math.PI / 2);
+    ctx.translate(point.x, point.y);
     ctx.fillStyle = '#F2CE4A';
-    ctx.fillRect(r * .48, -r * 1.12, r * .42, r * .62);
+    ctx.fillRect(rp * .48, -rp * 1.12, rp * .42, rp * .62);
     ctx.restore();
   }
 
   // 등번호는 세워서 그린다. 22명 구분이 전적으로 여기 달려 있어서
   // 스프라이트에 굽지 않고 늘 위에 얹는다.
   ctx.save();
-  ctx.translate(p.x, p.y);
-  if (view.rot) ctx.rotate(Math.PI / 2);
+  ctx.translate(point.x, point.y);
   // 스프라이트 위에서는 번호가 선수를 통째로 덮지 않게 작게 쓰고,
   // 어두운 테두리를 둘러 밝은 셔츠·잔디 어디서나 읽히게 한다.
-  const fs = Math.max(7, r * (spriteReady ? .82 : 1.05));
+  const fs = Math.max(7 * view.dpr, rp * (spriteReady ? .82 : 1.05));
   ctx.font = '700 ' + fs + 'px ' + bodyFont();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const label = p.isGK ? 'GK' : String(p.no);
@@ -142,25 +189,26 @@ function drawPlayer(p) {
 
 function drawBall() {
   const base = drawRadius(R_BALL, DRAW_BALL_MIN_PX);
-  const r = base * Math.min(BALL_GROW_MAX, 1 + ball.z / BALL_GROW);
+  const scale = projectScaleAt(ball.y);
+  const point = projectWorld(ball.x, ball.y);
+  const r = base * scale * Math.min(BALL_GROW_MAX, 1 + ball.z / BALL_GROW);
   const lift = ball.z * BALL_LIFT;
 
   // 화면 위쪽은 가로 화면에서 필드 -y, 세로 화면에서 필드 +x 다.
   // 변환이 화면y = -s·필드x 로 사상하기 때문이다. 필드 좌표로 그냥 빼면
   // 세로 화면에서 공이 위가 아니라 옆으로 뜬다.
-  const ox = view.rot ? lift : 0;
-  const oy = view.rot ? 0 : -lift;
+  const liftPx = lift * scale;
 
   // 그림자는 지면에 남는다. 공과 벌어지는 거리가 높이의 주된 단서다.
-  const sh = base * (1 - Math.min(.45, ball.z / 600));
+  const sh = base * scale * (1 - Math.min(.45, ball.z / 600));
   ctx.fillStyle = `rgba(0,0,0,${Math.max(.12, .34 - ball.z / 900).toFixed(3)})`;
   ctx.beginPath();
-  ctx.ellipse(ball.x, ball.y, sh, sh * .8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.ellipse(point.x, point.y, sh, sh * .48, 0, 0, Math.PI * 2); ctx.fill();
 
   ctx.fillStyle = C.ball;
-  ctx.beginPath(); ctx.arc(ball.x + ox, ball.y + oy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(point.x, point.y - liftPx, r, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#152528';
-  ctx.beginPath(); ctx.arc(ball.x + ox, ball.y + oy, r * 0.42, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(point.x, point.y - liftPx, r * 0.42, 0, Math.PI * 2); ctx.fill();
 }
 
 // 미니맵은 화면 좌표로 그린다(경기장 변환·회전과 무관하게 항상 가로).

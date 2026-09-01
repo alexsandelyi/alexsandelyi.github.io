@@ -31,6 +31,12 @@ let GK_REACH_MUL = 6.0;
 const DRAW_PLAYER_MIN_PX = 18, DRAW_BALL_MIN_PX = 8;
 const CAMERA_LANDSCAPE_W = 40 * M, CAMERA_PORTRAIT_W = 26 * M;
 const CAMERA_LEAD_MAX = 6 * M;
+// Reference-match camera: a mild 3/4 overhead view, about 40 degrees above
+// the pitch plane. These values affect drawing only; all game maths stays in
+// the 2100 x 1360 logical pitch.
+const CAMERA_ELEVATION = 40 * Math.PI / 180;
+const CAMERA_DEPTH_SCALE = Math.sin(CAMERA_ELEVATION);
+const CAMERA_PERSPECTIVE = 0.14;
 
 let MATCH_SEC = 600;
 const GOAL_PAUSE = 1.6;
@@ -84,17 +90,42 @@ if (typeof ResizeObserver !== 'undefined')
 // 화면에 보이는 경기장 범위(논리단위)
 function viewSpan() {
   const s = view.scale;
+  const depthScale = CAMERA_DEPTH_SCALE * (1 + CAMERA_PERSPECTIVE * .5);
   return view.rot
-    ? { x:canvas.height / s, y:canvas.width / s }    // 세로: 화면높이=필드x
-    : { x:canvas.width / s,  y:canvas.height / s };
+    ? { x:canvas.height / s, y:canvas.width / (s * depthScale) }
+    : { x:canvas.width / s,  y:canvas.height / (s * depthScale) };
 }
 
 function cameraScale(w, h, rot, dpr = 1) {
   const primarySpan = rot ? CAMERA_PORTRAIT_W : CAMERA_LANDSCAPE_W;
   const primary = w * dpr / primarySpan;
-  // 아주 납작하거나 긴 창에서도 반대 축으로 경기장 밖을 보이지 않는다.
-  const secondary = h * dpr / (rot ? FW : FH);
+  // Account for the camera's compressed depth while preserving the framing rule.
+  const projectedDepth = FH * CAMERA_DEPTH_SCALE * (1 + CAMERA_PERSPECTIVE * .5);
+  const secondary = h * dpr / (rot ? FW : projectedDepth);
   return Math.max(primary, secondary);
+}
+
+function depthScaleAt(y) {
+  return Math.max(.88, Math.min(1.12,
+    1 + ((y - FH / 2) / FH) * CAMERA_PERSPECTIVE));
+}
+
+// Project logical pitch coordinates into physical canvas pixels. This is the
+// only place where the oblique camera and portrait rotation are applied.
+function projectWorld(x, y) {
+  const q = depthScaleAt(y);
+  let px = (x - cam.x) * view.scale * q;
+  let py = (y - cam.y) * view.scale * CAMERA_DEPTH_SCALE * q;
+  if (view.rot) {
+    const t = px;
+    px = py;
+    py = -t;
+  }
+  return { x:canvas.width / 2 + px, y:canvas.height / 2 + py };
+}
+
+function projectScaleAt(y) {
+  return view.scale * depthScaleAt(y);
 }
 
 function updateCamera(dt) {

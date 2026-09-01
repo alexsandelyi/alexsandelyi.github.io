@@ -232,9 +232,33 @@ def pose(name, f):
 # 500줄을 넘어서 나눴다.
 from sprite_import import IMPORTED, load_imported   # noqa: E402
 
-SHEET = [('idle', 1), ('walk', 4), ('run', 2), ('kick', 1), ('shoot', 1),
+SHEET = [('idle', 1), ('walk', 2), ('run', 2), ('kick', 1), ('shoot', 1),
          ('charge', 1), ('tackle', 1), ('block', 1), ('header', 1),
          ('deflect', 1), ('gk-dive', 1), ('gk-claim', 1), ('gk-punt', 1)]
+
+# Dedicated direction art in atan2 order: E, SE, S, SW, W, NW, N, NE.
+DIRECTIONS = [
+    ('e', ['dir-e.png', 'dir-e2.png']),
+    ('se', ['dir-se.png', 'dir-se2.png']),
+    ('s', ['dir-s.png', 'dir-s2.png']),
+    ('sw', ['dir-sw.png', 'dir-sw2.png']),
+    ('w', ['dir-w.png', 'dir-w2.png']),
+    ('nw', ['dir-nw.png', 'dir-nw2.png']),
+    ('n', ['dir-n.png', 'dir-n2.png']),
+    ('ne', ['dir-ne.png', 'dir-ne2.png'])
+]
+
+# Each action has its own three-frame strip for every camera direction.
+# Keep the order coupled to DIRECTIONS so the generated JS and the sheet
+# columns cannot drift apart.
+ACTION_NAMES = ['kick', 'shoot', 'charge', 'tackle', 'block', 'header',
+                'deflect', 'gk-dive', 'gk-claim', 'gk-punt']
+ACTION_DIRECTIONS = [
+    (action, [(direction, [
+        '%s-%s-%d.png' % (action, direction, frame) for frame in range(3)
+    ]) for direction, _files in DIRECTIONS])
+    for action in ACTION_NAMES
+]
 
 
 # ── 몸 비율 ─────────────────────────────────────────────────────────
@@ -341,7 +365,10 @@ def check_fit(img, where):
 
 
 def build():
-    cols = sum(n for _, n in SHEET)
+    cols = (sum(n for _, n in SHEET) +
+            sum(len(files) for _, files in DIRECTIONS) +
+            sum(len(files) for _, directions in ACTION_DIRECTIONS
+                for _, files in directions))
     sheet = Image.new('RGBA', (cols * CELL, ROWS * CELL), (0, 0, 0, 0))
     index, col = [], 0
     for name, n in SHEET:
@@ -360,7 +387,36 @@ def build():
                 check_fit(cell, '%s[%d] 줄%d' % (name, f, layer))
                 sheet.paste(cell, ((col + f) * CELL, layer * CELL))
         col += n
-    return sheet, index
+    direction_index = []
+    for name, files in DIRECTIONS:
+        got = load_imported(files, False)
+        if len(got) != len(files):
+            sys.exit('%s: direction source must contain %d figures' %
+                     (name, len(files)))
+        direction_index.append((name, col, len(files)))
+        for f in range(len(files)):
+            for layer in range(ROWS):
+                cell = got[f][layer]
+                check_fit(cell, 'direction-%s[%d]' % (name, f))
+                sheet.paste(cell, ((col + f) * CELL, layer * CELL))
+        col += len(files)
+    action_direction_index = []
+    for action, directions in ACTION_DIRECTIONS:
+        action_slots = []
+        for direction, files in directions:
+            got = load_imported(files, False)
+            if len(got) != len(files):
+                sys.exit('%s-%s: action source must contain %d frames' %
+                         (action, direction, len(files)))
+            action_slots.append((direction, col, len(files)))
+            for f in range(len(files)):
+                for layer in range(ROWS):
+                    cell = got[f][layer]
+                    check_fit(cell, 'action-%s-%s[%d]' % (action, direction, f))
+                    sheet.paste(cell, ((col + f) * CELL, layer * CELL))
+            col += len(files)
+        action_direction_index.append((action, action_slots))
+    return sheet, index, direction_index, action_direction_index
 
 
 def poses_literal(index):
@@ -380,7 +436,22 @@ def poses_literal(index):
     return '\n'.join(lines)
 
 
-def stamp_js(root, png_path, index):
+def directions_literal(index):
+    return ', '.join('%s:[%d, %d]' % (name, col, n)
+                     for name, col, n in index)
+
+
+def action_directions_literal(index):
+    lines = []
+    for action, directions in index:
+        key = action if action.isalnum() else "'%s'" % action
+        slots = ', '.join('%s:[%d, %d]' % (direction, col, n)
+                          for direction, col, n in directions)
+        lines.append('  %s:{%s}' % (key, slots))
+    return ',\n'.join(lines)
+
+
+def stamp_js(root, png_path, index, direction_index, action_direction_index):
     """09-sprites.js 의 SPRITE_V·SPRITE_BODY·POSES 를 덮어쓴다.
 
     SPRITE_BODY 는 셀 대비 몸통 **폭** 비율이다 (길이가 아니다 — 선수는
@@ -406,9 +477,17 @@ def stamp_js(root, png_path, index):
                       lambda m: m.group(1) + repr(body) + m.group(2), out)
     out, n3 = re.subn(r"const POSES = \{[^}]*\};",
                       'const POSES = {\n' + poses_literal(index) + '\n};', out)
-    if n1 != 1 or n2 != 1 or n3 != 1:
+    out, n4 = re.subn(r"const DIRECTION_POSES = \{[^}]*\};",
+                      'const DIRECTION_POSES = {' +
+                      directions_literal(direction_index) + '};', out)
+    out, n5 = re.subn(r"const ACTION_DIRECTION_POSES = \{[\s\S]*?\};",
+                      'const ACTION_DIRECTION_POSES = {\n' +
+                      action_directions_literal(action_direction_index) +
+                      '\n};', out)
+    if n1 != 1 or n2 != 1 or n3 != 1 or n4 != 1 or n5 != 1:
         sys.exit('09-sprites.js 치환 실패 — SPRITE_V %d, SPRITE_BODY %d, '
-                 'POSES %d (각각 1이어야 함)' % (n1, n2, n3))
+                 'POSES %d, DIRECTION_POSES %d, ACTION_DIRECTION_POSES %d '
+                 '(각각 1이어야 함)' % (n1, n2, n3, n4, n5))
     if out != src:
         with io.open(js, 'w', encoding='utf-8', newline='') as f:
             f.write(out)
@@ -419,14 +498,21 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = os.path.join(root, 'games', 'soccer', 'assets')
     os.makedirs(out, exist_ok=True)
-    sheet, index = build()
+    sheet, index, direction_index, action_direction_index = build()
     path = os.path.join(out, 'players.png')
     sheet.save(path)
     print('%s  %d x %d  (%d장)'
           % (os.path.relpath(path, root), sheet.width, sheet.height,
              sum(n for _, n in SHEET)))
     print('POSES = ' + ', '.join('%s:%d+%d' % (n, c, k) for n, c, k in index))
-    stamped = stamp_js(root, path, index)
+    print('DIRECTION_POSES = ' +
+          ', '.join('%s:%d+%d' % (n, c, k) for n, c, k in direction_index))
+    print('ACTION_DIRECTION_POSES = ' +
+          ', '.join('%s:%d+%d' % (action, col, n)
+                    for action, directions in action_direction_index
+                    for _direction, col, n in directions[:1]))
+    stamped = stamp_js(root, path, index, direction_index,
+                       action_direction_index)
     if stamped:
         print('SPRITE_V = %s   SPRITE_BODY = %s' % stamped)
         print('이어서 `node tools/soccer-sim.js --restamp`')

@@ -7,7 +7,7 @@
 // 만든다. **시트를 다시 만들면 SPRITE_V 가 자동으로 갱신되고, 그러면
 // js/ 해시가 바뀌므로 `node tools/soccer-sim.js --restamp` 를 돌려야 한다.**
 
-const SPRITE_V = 'fb3fb999';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
+const SPRITE_V = '43b4b19e';        // sprite-gen.py 가 덮어쓴다. 손대지 않는다
 const SPRITE_CELL = 64;
 // 셀 대비 몸(어깨) 지름. 그리기 크기를 몸 기준으로 맞추는 데 쓴다 —
 // 셀 기준으로 맞추면 팔다리 여백까지 세어 선수가 작아 보인다.
@@ -22,11 +22,25 @@ const SPRITE_GAIN = 1.35;
 
 // 시트에서의 시작 칸과 장수. sprite-gen.py 의 SHEET 와 같아야 한다.
 const POSES = {
-  idle:[0, 1], walk:[1, 4], run:[5, 2], kick:[7, 1], shoot:[8, 1],
-  charge:[9, 1], tackle:[10, 1], block:[11, 1], header:[12, 1],
-  deflect:[13, 1], 'gk-dive':[14, 1], 'gk-claim':[15, 1],
-  'gk-punt':[16, 1]
+  idle:[0, 1], walk:[1, 2], run:[3, 2], kick:[5, 1], shoot:[6, 1],
+  charge:[7, 1], tackle:[8, 1], block:[9, 1], header:[10, 1],
+  deflect:[11, 1], 'gk-dive':[12, 1], 'gk-claim':[13, 1],
+  'gk-punt':[14, 1]
 };
+const DIRECTION_POSES = {e:[15, 2], se:[17, 2], s:[19, 2], sw:[21, 2], w:[23, 2], nw:[25, 2], n:[27, 2], ne:[29, 2]};
+const ACTION_DIRECTION_POSES = {
+  kick:{e:[31, 3], se:[34, 3], s:[37, 3], sw:[40, 3], w:[43, 3], nw:[46, 3], n:[49, 3], ne:[52, 3]},
+  shoot:{e:[55, 3], se:[58, 3], s:[61, 3], sw:[64, 3], w:[67, 3], nw:[70, 3], n:[73, 3], ne:[76, 3]},
+  charge:{e:[79, 3], se:[82, 3], s:[85, 3], sw:[88, 3], w:[91, 3], nw:[94, 3], n:[97, 3], ne:[100, 3]},
+  tackle:{e:[103, 3], se:[106, 3], s:[109, 3], sw:[112, 3], w:[115, 3], nw:[118, 3], n:[121, 3], ne:[124, 3]},
+  block:{e:[127, 3], se:[130, 3], s:[133, 3], sw:[136, 3], w:[139, 3], nw:[142, 3], n:[145, 3], ne:[148, 3]},
+  header:{e:[151, 3], se:[154, 3], s:[157, 3], sw:[160, 3], w:[163, 3], nw:[166, 3], n:[169, 3], ne:[172, 3]},
+  deflect:{e:[175, 3], se:[178, 3], s:[181, 3], sw:[184, 3], w:[187, 3], nw:[190, 3], n:[193, 3], ne:[196, 3]},
+  'gk-dive':{e:[199, 3], se:[202, 3], s:[205, 3], sw:[208, 3], w:[211, 3], nw:[214, 3], n:[217, 3], ne:[220, 3]},
+  'gk-claim':{e:[223, 3], se:[226, 3], s:[229, 3], sw:[232, 3], w:[235, 3], nw:[238, 3], n:[241, 3], ne:[244, 3]},
+  'gk-punt':{e:[247, 3], se:[250, 3], s:[253, 3], sw:[256, 3], w:[259, 3], nw:[262, 3], n:[265, 3], ne:[268, 3]}
+};
+const DIRECTION_ORDER = ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'];
 
 // 원샷 동작의 재생 길이(초). **쿨다운과 다르다.** headCd 0.6 은 연속
 // 헤딩을 막는 게임 규칙이지 동작 길이가 아니다. 쿨다운으로 프레임을
@@ -145,6 +159,37 @@ function spriteSheetFor(p) {
   return spriteSheets[key];
 }
 
+function playerDirection(p) {
+  let angle = Math.atan2(p.aimY, p.aimX);
+  if (angle < 0) angle += Math.PI * 2;
+  const i = Math.round(angle / (Math.PI / 4)) % DIRECTION_ORDER.length;
+  return DIRECTION_ORDER[i];
+}
+
+function directionFrame(p, pose, slot) {
+  if (pose === 'idle' || slot[1] === 1) return slot[0];
+  const step = POSE_STRIDE[pose] || POSE_STRIDE.run;
+  const i = Math.floor(Math.abs(p.stride) / step) % slot[1];
+  return slot[0] + i;
+}
+
+function actionDirectionFrame(p, pose, slot) {
+  const timer = POSE_TIMER[pose];
+  if (pose === 'charge') {
+    return frameAt(slot[0], slot[1], p.shootCharge || 0);
+  }
+  if (timer) {
+    return frameAt(slot[0], slot[1], 1 - p[timer[0]] / timer[1]);
+  }
+  if (pose === 'gk-claim') {
+    const d = Math.hypot(ball.x - p.x, ball.y - p.y);
+    return frameAt(slot[0], slot[1], 1 - Math.min(1, d / (p.reach * 2.5)));
+  }
+  const dur = POSE_DUR[pose];
+  if (dur) return frameAt(slot[0], slot[1], 1 - p.poseT / dur);
+  return slot[0];
+}
+
 // 선수 한 명. 못 그리면 false 를 돌려 호출한 쪽이 원으로 되돌아간다.
 //
 // 필드 좌표계에서 그린다 — 세로 화면에서는 경기장 변환이 이미 90° 돌아
@@ -154,15 +199,29 @@ function spriteSheetFor(p) {
 function drawPlayerSprite(p, r) {
   const sheet = spriteReady ? spriteSheetFor(p) : null;
   if (!sheet) return false;
-  const col = poseFrame(p, playerPose(p));
+  const pose = playerPose(p);
+  const directional = pose === 'idle' || pose === 'walk' || pose === 'run';
+  const direction = playerDirection(p);
+  const movementSlot = directional ? DIRECTION_POSES[direction] : null;
+  const actionSlot = directional ? null
+    : (ACTION_DIRECTION_POSES[pose] && ACTION_DIRECTION_POSES[pose][direction]);
+  const slot = movementSlot || actionSlot;
+  const col = movementSlot ? directionFrame(p, pose, movementSlot)
+    : actionSlot ? actionDirectionFrame(p, pose, actionSlot)
+    : poseFrame(p, pose);
+  const oriented = !!slot;
   // 그리기 크기는 셀이 아니라 **몸 지름** 기준이다. 셀로 맞추면 팔다리
   // 여백까지 세어 선수가 원보다 작아 보인다.
   const s = 2 * r * SPRITE_GAIN / SPRITE_BODY;
+  const point = projectWorld(p.x, p.y);
+  const scale = projectScaleAt(p.y);
   ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(Math.atan2(p.aimY, p.aimX));
+  ctx.translate(point.x, point.y);
+  ctx.rotate(oriented
+    ? (view.rot ? -Math.PI / 2 : 0)
+    : Math.atan2(p.aimY, p.aimX) + (view.rot ? -Math.PI / 2 : 0));
   ctx.drawImage(sheet, col * SPRITE_CELL, 0, SPRITE_CELL, SPRITE_CELL,
-    -s / 2, -s / 2, s, s);
+    -s * scale / 2, -s * scale / 2, s * scale, s * scale);
   ctx.restore();
   return true;
 }

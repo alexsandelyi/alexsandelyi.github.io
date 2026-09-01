@@ -80,6 +80,15 @@ git show 267d550:games/soccer/balance.md   # 지우기 직전 커밋
 - **크기 기준은 어깨 폭이다.** 전체 길이로 맞추면 달릴 때 뒤로 뻗은 다리
   때문에 선수가 작아지고 서 있을 때 커진다.
 
+## 현재 스프라이트 시트
+
+`tools/sprite-src/`에는 `kick`, `shoot`, `charge`, `tackle`, `block`, `header`,
+`deflect`, `gk-dive`, `gk-claim`, `gk-punt` 10개에 대해 8방향(E, SE, S, SW,
+W, NW, N, NE)별 3프레임, 총 240개가 있다. `sprite-gen.py`는 기존 15개 포즈,
+이동 8방향 2프레임과 액션 240칸을 합쳐 총 271칸의 시트를 만든다.
+`09-sprites.js`는 `ACTION_DIRECTION_POSES`로 방향별 액션을 재생하며,
+`poseT`/`shootCharge`로 3프레임 진행을 선택한다.
+
 ## 코드 파일 500줄
 
 **코드 파일은 500줄을 넘지 않는다.** 넘으면 글자를 압축하지 말고 책임별로

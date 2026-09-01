@@ -67,6 +67,7 @@ const CSS = `
    색이 드러난다. 오버스크롤·짧은 페이지·뷰포트 불일치에서 보인다.
    테마 색도 밝은 쪽으로 알려 주소창 톤이 어긋나지 않게 한다. */
 html,body{background:#F4EFE4 !important}
+.ilb-root{--border-subtle:#A69A87 !important}
 
 /* ── 지면: 한지 텍스처 ────────────────────────────────────────────
    900px 그대로 반복한다. 축소하면 결이 뭉쳐 선처럼 보인다.
@@ -129,7 +130,7 @@ html,body{background:#F4EFE4 !important}
 .ilb-head>*:last-child{margin-left:auto}
 
 /* ── 5열: gap 대신 세로 헤어라인 ──────────────────────────────── */
-.ilb-rail{gap:1px !important;background:#EAE3D6}
+.ilb-rail{gap:1px !important;background:#A69A87}
 .ilb-rail-item{
   border:0 !important;border-radius:0 !important;
   background:#FCFAF6 !important;
@@ -149,7 +150,7 @@ html,body{background:#F4EFE4 !important}
   /* 세로 룰. grid-row 를 반드시 준다 — 열만 지정하면 자동 배치가 1행
      col2 로 돌아가지 못하고 2행으로 밀려난다. 그러면 높이 0 짜리
      둘째 행이 생기고 행 간격(32px)이 카드 아래 빈 띠로 남는다. */
-  .ilb-hero::after{content:"";display:block;background:#EAE3D6;
+  .ilb-hero::after{content:"";display:block;background:#A69A87;
     grid-column:2;grid-row:1}
   .ilb-hero>*:last-child{grid-column:3}
 }
@@ -173,12 +174,12 @@ html,body{background:#F4EFE4 !important}
 /* 데스크톱에서만 오른쪽 선. 767 이하에서는 하단 탭바가 되므로 위쪽 선만
    남기고 오른쪽 선을 지운다 — 안 지우면 화면 끝에 세로선이 남는다. */
 @media (min-width:768px){
-  .ilb-nav{border-right:1px solid #EAE3D6 !important}
+  .ilb-nav{border-right:1px solid #A69A87 !important}
 }
 @media (max-width:767px){
   .ilb-nav{
     border-right:0 !important;
-    border-top:1px solid #EAE3D6 !important;
+    border-top:1px solid #A69A87 !important;
   }
   /* 탭바에서는 활성 막대를 왼쪽이 아니라 위쪽에 둔다 */
   .ilb-navlist>button[style*="var(--accent)"]::before{
@@ -213,7 +214,7 @@ html,body{background:#F4EFE4 !important}
   counter-reset:ilbpg;
   gap:20px !important;
   align-items:center !important;
-  border-top:1px solid #EAE3D6;
+  border-top:1px solid #A69A87;
   padding-top:12px;
   margin-top:24px !important;
 }

@@ -51,8 +51,8 @@
 | `CNAME` | 커스텀 도메인 `ilbbang.com`. 삭제하면 도메인이 해제된다 |
 | `games/soccer/` | 의존성 없는 Canvas 2D 축구 게임 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 순서 로드. 파일당 500줄 이하 |
-| `games/soccer/assets/players.png` | 선수 스프라이트 시트 17장. `tools/sprite-gen.py` 산출물. 손으로 고치지 않음 |
-| `tools/sprite-src/` | 손으로 그린 원본 일러스트. 저장소 밖 원본에 의존하지 않는다 |
+| `games/soccer/assets/players.png` | 선수 스프라이트 시트 271칸(기존 포즈 15칸 + 이동 8방향×2프레임 + 액션 10종×8방향×3프레임). `tools/sprite-gen.py` 산출물. 손으로 고치지 않음 |
+| `tools/sprite-src/` | 원본 일러스트와 방향·액션 프레임 소스. 저장소 밖 원본에 의존하지 않는다 |
 | `games/soccer/CLAUDE.md` | 축구 작업 지침. **밸런스 기준선 수치와 스프라이트 실패 기록이 여기에만 있다** — 지우면 복원 불가 |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
 | `tools/patches/` | 번들 재적용 패치 7개. 번들이 재생성되면 여기서 복구한다 |

@@ -30,8 +30,11 @@ CELL = 64
 # 가 실패시킨다.
 IMPORTED = {
     'idle': (['stand0.png'], False),
-    'walk': (['stand0.png', 'stand1.png'], True),
-    'run': (['run.png'], True),
+    # 새 사선 탑다운 원본은 모두 +x(화면 오른쪽)를 향한다. 얼굴 방향이
+    # 보이는 그림을 좌우 반전하면 애니메이션 중 선수가 뒤집혀 보이므로
+    # 프레임마다 반전하지 않고 원본 프레임을 그대로 쓴다.
+    'walk': (['stand0.png', 'stand1.png'], False),
+    'run': (['run.png', 'run1.png'], False),
     # 아래 10개는 생성기(sprite-ai)로 뽑은 오버헤드 그림이다. 포즈마다
     # 한 장뿐이라 SHEET 의 장수도 1 로 맞춰 뒀다 — 애니메이션이 아니라
     # 정지 포즈다. 프레임을 늘리려면 원본을 더 받아 여기와 SHEET 를
@@ -106,7 +109,8 @@ def _place(shirt, detail, k, flip):
     pair, worst = [], 0.0
     for layer in (shirt, detail):
         img = layer.transpose(Image.FLIP_LEFT_RIGHT) if flip else layer
-        img = img.transpose(Image.ROTATE_270)          # 위 → +x
+        # 원본 일러스트 자체가 +x(화면 오른쪽)를 향하므로 회전하지 않는다.
+        # drawPlayerSprite()가 실제 aim 각도로 회전시킨다.
         img = img.resize((max(1, int(round(img.width * k))),
                           max(1, int(round(img.height * k)))), Image.LANCZOS)
         cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
@@ -136,6 +140,14 @@ def _fit(shirt, detail, kit_w, flip, where=''):
     if worst > lim:
         k *= lim / worst * 0.98        # 재샘플링 오차 여유
         pair, after = _place(shirt, detail, k, flip)
+        # 반올림된 리사이즈 치수와 두 레이어의 외곽 픽셀 때문에 한 번의
+        # 비율 계산 뒤에도 셀 경계를 아주 조금 넘을 수 있다. 실제 결과를
+        # 다시 확인하며 안전 여백 안으로 들어올 때까지 반복한다.
+        for _ in range(4):
+            if after <= lim:
+                break
+            k *= lim / after * 0.98
+            pair, after = _place(shirt, detail, k, flip)
         print('  %s: 내접원 초과(%.1f) → %.0f%% 로 줄임 (%.1f)'
               % (where or '?', worst, 100 * k * kit_w / KIT_W, after))
     return pair
@@ -154,5 +166,3 @@ def load_imported(files, mirror):
             frames.append(_fit(shirt, detail, kit_w, flip, fname))
     _imported_cache[key] = frames
     return frames
-
-
