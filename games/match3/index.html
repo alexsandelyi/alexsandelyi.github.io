@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#173f2c">
+  <meta name="description" content="과일을 맞추고 동물 친구들에게 먹이를 주세요. 일빵 Match 3 퍼즐 게임.">
+  <title>Match 3 — 일빵</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="web.css">
+</head>
+<body>
+  <main id="app">
+    <section id="menu" aria-label="Match 3 시작 화면">
+      <a class="home" href="../../">← 일빵으로</a>
+      <div class="menu-content">
+        <h1><img src="menu/start_title_match3.webp" alt="Match 3" width="860" height="230"></h1>
+        <p class="intro">과일을 맞추고<br>동물 친구들의 배를 채워 주세요!</p>
+        <div class="stage-panel">
+          <h2>함께할 친구를 골라 주세요</h2>
+          <div id="stages" role="group" aria-label="스테이지 선택"></div>
+          <p id="stage-description" aria-live="polite"></p>
+        </div>
+        <button id="play" class="primary" type="button">게임 준비</button>
+        <button id="sound" class="secondary" type="button" aria-pressed="true">소리 켜짐</button>
+        <p class="how-to">이웃한 과일을 바꿔 3개 이상 연결하세요.<br>과일을 끌거나, 두 개를 차례로 눌러도 돼요.</p>
+        <p id="storage-note" role="status" hidden>이 브라우저에서는 진행도가 저장되지 않을 수 있어요.</p>
+      </div>
+    </section>
+    <section id="game" aria-label="Match 3 게임" hidden>
+      <header class="game-bar"><button id="back" type="button">← 메뉴</button><span id="stage-label"></span><button id="pause" type="button">일시정지</button></header>
+      <div id="game-area"></div>
+      <div id="cover" class="cover" role="status">
+        <div class="cover-card"><h2 id="cover-title">친구를 만나러 가는 중</h2><p id="cover-detail">게임을 불러오고 있어요.</p><button id="continue" class="primary" type="button" hidden>게임 시작</button><button id="retry" class="secondary" type="button" hidden>다시 불러오기</button><button id="cover-menu" class="secondary" type="button">메뉴로</button></div>
+      </div>
+    </section>
+  </main>
+  <noscript>이 게임을 플레이하려면 JavaScript를 켜 주세요.</noscript>
+  <script src="web.js?v=2"></script>
+</body>
+</html>
