@@ -64,7 +64,7 @@
         $('cover-detail').textContent = '연결이 느려 준비가 오래 걸리고 있어요. 잠시 기다리거나 다시 불러와 주세요.';
         $('retry').hidden = false;
       }
-    }, 45000);
+    }, 120000);
   }
   function menu() {
     clearTimeout(timer); frame?.remove(); frame = null;
@@ -85,7 +85,13 @@
     const moduleWindow = frame.contentWindow.document.getElementById('match3')?.contentWindow;
     if (event.source !== frame.contentWindow && event.source !== moduleWindow) return;
     const {type, detail} = event.data;
-    if (type === 'error') { failed = true; clearTimeout(timer); cover('잠시 문제가 생겼어요', detail); }
+    if (type === 'loading' && !ready && !failed) {
+      const percent = Number(detail);
+      if (Number.isFinite(percent) && percent > 0) {
+        $('cover-detail').textContent = `게임 준비 중 ${Math.min(100, Math.max(0, Math.round(percent)))}%`;
+      }
+    }
+    else if (type === 'error') { failed = true; clearTimeout(timer); cover('잠시 문제가 생겼어요', detail); }
     else if (type === 'restart') start();
     else if (type === 'menu') menu();
     else if (type === 'playing' && !failed) {
