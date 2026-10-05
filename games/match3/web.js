@@ -14,7 +14,7 @@
     catch { $('storage-note').hidden = false; }
   }
   function renderMenu() {
-    const unlocked = Math.max(1, Math.min(6, Number(read(progressKey, 1)) || 1));
+    const unlocked = 6;
     selected = Math.min(selected, unlocked);
     $('stages').replaceChildren();
     names.forEach((name, i) => {
