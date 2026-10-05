@@ -1,9 +1,9 @@
-'use strict';
+﻿'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  const names = ['돼지', '코뿔소', '악어', '하마', '코끼리', '모두 함께'];
-  const progressKey = 'game_progress:unlocked_match3i';
-  const soundKey = 'sound_effects_prefs:enabledb';
+  const names = ['?쇱?', '肄붾퓭??, '?낆뼱', '?섎쭏', '肄붾겮由?, '紐⑤몢 ?④퍡'];
+  const progressKey = 'game_progress-unlocked_match3i';
+  const soundKey = 'sound_effects_prefs-enabledb';
   let selected = 1, frame, timer, paused = false, ready = false, failed = false, runNonce = 0;
   function read(key, fallback) {
     try { return localStorage.getItem(key) ?? fallback; }
@@ -23,14 +23,14 @@
       button.textContent = `${i + 1}. ${name}`;
       button.setAttribute('aria-pressed', String(selected === i + 1));
       const label = document.createElement('span');
-      label.textContent = button.disabled ? '이전 단계 완료 후' : selected === i + 1 ? '선택됨' : '플레이 가능';
+      label.textContent = button.disabled ? '?댁쟾 ?④퀎 ?꾨즺 ?? : selected === i + 1 ? '?좏깮?? : '?뚮젅??媛??;
       button.append(label);
       button.addEventListener('click', () => { selected = i + 1; renderMenu(); $('stages').children[i].focus(); });
       $('stages').append(button);
     });
-    $('stage-description').textContent = selected === 6 ? '다섯 친구에게 골고루 먹이를 주세요.' : `${names[selected - 1]} 친구가 맛있는 과일을 기다려요.`;
+    $('stage-description').textContent = selected === 6 ? '?ㅼ꽢 移쒓뎄?먭쾶 怨④퀬猷?癒뱀씠瑜?二쇱꽭??' : `${names[selected - 1]} 移쒓뎄媛 留쏆엳??怨쇱씪??湲곕떎?ㅼ슂.`;
     const sound = read(soundKey, 'true') !== 'false';
-    $('sound').textContent = sound ? '소리 켜짐' : '소리 꺼짐';
+    $('sound').textContent = sound ? '?뚮━ 耳쒖쭚' : '?뚮━ 爰쇱쭚';
     $('sound').setAttribute('aria-pressed', String(sound));
   }
   function resize() {
@@ -44,7 +44,7 @@
   }
   function cover(title, detail, action) {
     $('cover').hidden = false; $('cover-title').textContent = title; $('cover-detail').textContent = detail;
-    $('continue').hidden = !action; $('continue').textContent = action || '게임 시작';
+    $('continue').hidden = !action; $('continue').textContent = action || '寃뚯엫 ?쒖옉';
     $('retry').hidden = !failed;
   }
   function start() {
@@ -52,16 +52,16 @@
     frame?.remove();
     ready = false; paused = true; failed = false;
     $('menu').hidden = true; $('game').hidden = false;
-    $('stage-label').textContent = `${selected} · ${names[selected - 1]}`;
+    $('stage-label').textContent = `${selected} 쨌 ${names[selected - 1]}`;
     $('pause').disabled = true;
-    cover('친구를 만나러 가는 중', '게임을 불러오고 있어요.');
-    frame = document.createElement('iframe'); frame.title = 'Match 3 게임 화면'; frame.allow = 'autoplay; fullscreen';
+    cover('移쒓뎄瑜?留뚮굹??媛??以?, '寃뚯엫??遺덈윭?ㅺ퀬 ?덉뼱??');
+    frame = document.createElement('iframe'); frame.title = 'Match 3 寃뚯엫 ?붾㈃'; frame.allow = 'autoplay; fullscreen';
     // Every embed gets a fresh URL so a retry cannot reuse a half-disposed GWT document.
     frame.src = `play.html?stage=${selected}&run=${++runNonce}`;
     $('game-area').append(frame); resize();
     timer = setTimeout(() => {
       if (!ready && !failed) {
-        $('cover-detail').textContent = '연결이 느려 준비가 오래 걸리고 있어요. 잠시 기다리거나 다시 불러와 주세요.';
+        $('cover-detail').textContent = '?곌껐???먮젮 以鍮꾧? ?ㅻ옒 嫄몃━怨??덉뼱?? ?좎떆 湲곕떎由ш굅???ㅼ떆 遺덈윭? 二쇱꽭??';
         $('retry').hidden = false;
       }
     }, 120000);
@@ -75,9 +75,9 @@
     if (!ready || failed) return;
     paused = value;
     frame.contentWindow.setMatch3Paused?.(value);
-    if (value) cover('잠깐 쉬어 갈까요?', '준비되면 계속 플레이하세요.', '계속하기');
+    if (value) cover('?좉퉸 ?ъ뼱 媛덇퉴??', '以鍮꾨릺硫?怨꾩냽 ?뚮젅?댄븯?몄슂.', '怨꾩냽?섍린');
     else { $('cover').hidden = true; frame.contentWindow.focus(); }
-    $('pause').textContent = value ? '계속하기' : '일시정지';
+    $('pause').textContent = value ? '怨꾩냽?섍린' : '?쇱떆?뺤?';
   }
   window.addEventListener('message', event => {
     if (!frame || event.origin !== location.origin || event.data?.source !== 'ilbbang-match3') return;
@@ -88,17 +88,17 @@
     if (type === 'loading' && !ready && !failed) {
       const percent = Number(detail);
       if (Number.isFinite(percent) && percent > 0) {
-        $('cover-detail').textContent = `게임 준비 중 ${Math.min(100, Math.max(0, Math.round(percent)))}%`;
+        $('cover-detail').textContent = `寃뚯엫 以鍮?以?${Math.min(100, Math.max(0, Math.round(percent)))}%`;
       }
     }
-    else if (type === 'error') { failed = true; clearTimeout(timer); cover('잠시 문제가 생겼어요', detail); }
+    else if (type === 'error') { failed = true; clearTimeout(timer); cover('?좎떆 臾몄젣媛 ?앷꼈?댁슂', detail); }
     else if (type === 'restart') start();
     else if (type === 'menu') menu();
     else if (type === 'playing' && !failed) {
       clearTimeout(timer);
       if (!ready) {
         ready = true; $('pause').disabled = false;
-        cover('친구가 기다리고 있어요!', '과일 3개를 연결해 먹이를 주세요.', '게임 시작');
+        cover('移쒓뎄媛 湲곕떎由ш퀬 ?덉뼱??', '怨쇱씪 3媛쒕? ?곌껐??癒뱀씠瑜?二쇱꽭??', '寃뚯엫 ?쒖옉');
         $('continue').focus();
       }
     }
