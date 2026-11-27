@@ -42,10 +42,11 @@ let MATCH_SEC = 600;
 const GOAL_PAUSE = 1.6;
 
 const C = {
-  turf:'#1D3236', turfAlt:'#233C41', line:'#33565C',
-  home:'#F58A5E', away:'#F2CE7A', ball:'#F2F7F4',
-  gkHome:'#8FD1C4', gkAway:'#C9A6E0',
-  mapBg:'rgba(21,37,40,.82)', mapLine:'#3D6169'
+  turf:'#2C7D40', turfAlt:'#338B48', turfOut:'#1D562C',
+  line:'rgba(244,250,245,.88)',
+  home:'#EB4638', away:'#F7C93B', ball:'#F7F9F8',
+  gkHome:'#26D0B8', gkAway:'#A878F5',
+  mapBg:'rgba(14,32,22,.84)', mapLine:'rgba(244,250,245,.52)'
 };
 
 // AI 난이도. 상대 팀 11명 전체에 적용된다(우리 팀 동료는 항상 '보통' 수준).
@@ -92,14 +93,13 @@ function viewSpan() {
   const s = view.scale;
   const depthScale = CAMERA_DEPTH_SCALE * (1 + CAMERA_PERSPECTIVE * .5);
   return view.rot
-    ? { x:canvas.height / s, y:canvas.width / (s * depthScale) }
+    ? { x:canvas.height / (s * depthScale), y:canvas.width / s }
     : { x:canvas.width / s,  y:canvas.height / (s * depthScale) };
 }
 
 function cameraScale(w, h, rot, dpr = 1) {
   const primarySpan = rot ? CAMERA_PORTRAIT_W : CAMERA_LANDSCAPE_W;
   const primary = w * dpr / primarySpan;
-  // Account for the camera's compressed depth while preserving the framing rule.
   const projectedDepth = FH * CAMERA_DEPTH_SCALE * (1 + CAMERA_PERSPECTIVE * .5);
   const secondary = h * dpr / (rot ? FW : projectedDepth);
   return Math.max(primary, secondary);
@@ -110,22 +110,38 @@ function depthScaleAt(y) {
     1 + ((y - FH / 2) / FH) * CAMERA_PERSPECTIVE));
 }
 
-// Project logical pitch coordinates into physical canvas pixels. This is the
-// only place where the oblique camera and portrait rotation are applied.
+function depthFactor(x, y) {
+  if (!view.rot) return depthScaleAt(y);
+  return Math.max(.90, Math.min(1.10,
+    1 + ((cam.x - x) / (CAMERA_PORTRAIT_W * 1.9)) * CAMERA_PERSPECTIVE));
+}
+
+// 논리 경기장 좌표 → 물리 캔버스 픽셀. 세로 화면에서도 원근 축소가 위→아래로 대칭 동작한다.
 function projectWorld(x, y) {
-  const q = depthScaleAt(y);
-  let px = (x - cam.x) * view.scale * q;
-  let py = (y - cam.y) * view.scale * CAMERA_DEPTH_SCALE * q;
+  const q = depthFactor(x, y);
+  let px, py;
   if (view.rot) {
-    const t = px;
-    px = py;
-    py = -t;
+    px = (y - cam.y) * view.scale * q;
+    py = -(x - cam.x) * view.scale * CAMERA_DEPTH_SCALE * q;
+  } else {
+    px = (x - cam.x) * view.scale * q;
+    py = (y - cam.y) * view.scale * CAMERA_DEPTH_SCALE * q;
   }
   return { x:canvas.width / 2 + px, y:canvas.height / 2 + py };
 }
 
 function projectScaleAt(y) {
   return view.scale * depthScaleAt(y);
+}
+
+function projectScale(x, y) {
+  return view.scale * depthFactor(x, y);
+}
+
+function projectWorld3D(x, y, z = 0) {
+  const pt = projectWorld(x, y);
+  const scale = projectScale(x, y);
+  return { x:pt.x, y:pt.y - z * BALL_LIFT * scale, groundY:pt.y, scale };
 }
 
 function updateCamera(dt) {
@@ -163,25 +179,86 @@ function applyFieldTransform() {
 
 // ── 입력 ───────────────────────────────────────────────────────────
 const keys = Object.create(null);
+const SHOOT_KEYS = { Enter:true, Space:true, KeyJ:true };
+const SWITCH_KEYS = { BracketLeft:true, KeyQ:true };
+// 킥 충전 시간. shootCharge 와 같은 1.05초를 쓴다.
+const KICK_CHARGE_MS = 1050;
+const PASS_KEYS = {
+  Backslash:[0, 'pass'], KeyK:[0, 'pass'],
+  BracketRight:[0, 'through'], KeyL:[0, 'through']
+};
+const holdStart = Object.create(null);
+const holdAim = Object.create(null);
+const holdPower = (t0) =>
+  Math.max(0, Math.min(1, (performance.now() - t0) / KICK_CHARGE_MS));
+
+function aimBend(ax0, ay0, ax1, ay1) {
+  const m0 = Math.hypot(ax0, ay0), m1 = Math.hypot(ax1, ay1);
+  if (m0 < 0.1 || m1 < 0.1) return 0;
+  const cross = (ax0 * ay1 - ay0 * ax1) / (m0 * m1);
+  return Math.max(-1, Math.min(1, cross * 1.45));
+}
+
+function humanChargeInfo() {
+  const p = ctrl[0];
+  if (!p) return null;
+  if (p.shootHeld) {
+    return {
+      kind:'shoot', power:p.shootCharge,
+      curve:aimBend(p.chargeAimX, p.chargeAimY, p.aimX, p.aimY)
+    };
+  }
+  for (const code in holdStart) {
+    if (holdStart[code] > 0) {
+      const pk = PASS_KEYS[code];
+      const a0 = holdAim[code] || [p.aimX, p.aimY];
+      return {
+        kind:pk ? pk[1] : 'pass', power:holdPower(holdStart[code]),
+        curve:aimBend(a0[0], a0[1], p.aimX, p.aimY)
+      };
+    }
+  }
+  if (passHeld) {
+    const held = performance.now() - passHoldTimer;
+    return {
+      kind:held >= 420 ? 'through' : 'pass',
+      power:Math.max(0, Math.min(1, held / KICK_CHARGE_MS)), curve:0
+    };
+  }
+  return null;
+}
+
 addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true;
-  // Space 는 이제 안 쓰지만 페이지 스크롤을 막으려고 기본 동작만 끈다.
   // Shift 는 쓰지 않는다 — Windows 고정 키가 5회 연타를 가로채 창을 띄운다.
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',
        'Backslash','BracketRight','BracketLeft','Quote','Semicolon'].includes(e.code))
     e.preventDefault();
-  if (e.code === 'Enter') beginAction(0);          // 슛 (공이 없으면 태클)
-  if (e.code === 'BracketLeft') act(0, 'switch');
-  // 패스·스루는 뗄 때 발사한다. 누른 길이가 그대로 킥 높이가 된다.
-  if (PASS_KEYS[e.code]) holdStart[e.code] = performance.now();
+  if (SHOOT_KEYS[e.code]) beginAction(0);          // 슛·원터치 (수비 시 태클)
+  if (SWITCH_KEYS[e.code]) act(0, 'switch');
+  // 패스·로빙은 뗄 때 발사한다. 누른 길이가 세기·거리를 정한다.
+  if (PASS_KEYS[e.code]) {
+    const pk = PASS_KEYS[e.code];
+    const oppOwns = state === 'play' && ball.owner && ball.owner.side !== pk[0];
+    if (pk[1] === 'pass' && oppOwns) {
+      act(pk[0], 'switch');
+    } else {
+      const p = ctrl[pk[0]];
+      holdStart[e.code] = performance.now();
+      holdAim[e.code] = p ? [p.aimX, p.aimY] : [1, 0];
+    }
+  }
 });
 addEventListener('keyup', e => {
   keys[e.code] = false;
-  if (e.code === 'Enter') endAction(0);
+  if (SHOOT_KEYS[e.code]) endAction(0);
   const pk = PASS_KEYS[e.code];
   if (pk && holdStart[e.code]) {
-    act(pk[0], pk[1], holdPower(holdStart[e.code]));
+    const p = ctrl[pk[0]];
+    const a0 = holdAim[e.code] || (p ? [p.aimX, p.aimY] : [1, 0]);
+    const curve = p ? aimBend(a0[0], a0[1], p.aimX, p.aimY) : 0;
+    act(pk[0], pk[1], holdPower(holdStart[e.code]), curve);
     holdStart[e.code] = 0;
   }
 });
@@ -190,13 +267,6 @@ addEventListener('blur', () => {
   for (const k in holdStart) holdStart[k] = 0;
   endAction(0);
 });
-
-// 킥 충전 시간. shootCharge 와 같은 1.05초를 쓴다.
-const KICK_CHARGE_MS = 1050;
-const PASS_KEYS = { Backslash:[0, 'pass'], BracketRight:[0, 'through'] };
-const holdStart = Object.create(null);
-const holdPower = (t0) =>
-  Math.max(0, Math.min(1, (performance.now() - t0) / KICK_CHARGE_MS));
 
 const touchLayer = document.getElementById('touch');
 const stickEl = document.getElementById('stick');
@@ -253,9 +323,11 @@ passBtn.addEventListener('pointerdown', e => {
 });
 passBtn.addEventListener('pointerup', e => {
   e.preventDefault(); passBtn.classList.remove('held'); passHeld = false;
-  const owned = ctrl[0] && ball.owner === ctrl[0];
+  const p = ctrl[0];
+  const oppOwns = ball.owner && ball.owner.side !== 0;
+  const canKick = p && (ball.owner === p || (!oppOwns && Math.hypot(ball.x - p.x, ball.y - p.y) < 180));
   const held = performance.now() - passHoldTimer;
-  act(0, owned ? (held >= 420 ? 'through' : 'pass') : 'switch',
+  act(0, canKick ? (held >= 420 ? 'through' : 'pass') : 'switch',
     Math.max(0, Math.min(1, held / KICK_CHARGE_MS)));
 });
 passBtn.addEventListener('pointercancel', () => {

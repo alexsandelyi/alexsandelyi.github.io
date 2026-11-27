@@ -145,6 +145,11 @@ function gkTarget(p) {
   const dir = attackDir[p.side];
   const gx = dir === 1 ? 0 : FW;
 
+  if (p.gkHoldT > 0 && ball.owner === p) {
+    p.gkClaim = false;
+    return { x:gx + dir * (GA_D * 0.9), y:FH / 2, claim:false };
+  }
+
   // 크로스가 들어오면 나와서 잡는다. 항상 나오면 골문이 비고 안 나오면
   // 크로스가 무적이 되므로, 낙하 지점까지 제때 갈 수 있을 때만 나간다.
   // keeping 이 판단 거리를 늘려서 결정이 양극단으로 굳지 않게 한다.
@@ -272,8 +277,8 @@ function readHuman(i) {
   if (keys.KeyS || keys.ArrowDown) { sy += 1; keyboard = true; }
   if (stick.active) { sx += stick.dx; sy += stick.dy; }
   // 화면 위로 밀면 상대 골문(필드 +x) 쪽. 회전 시 입력도 같이 돌려야 한다.
-  const sprint = !!keys.Semicolon;
-  const walking = !!keys.Quote;
+  const sprint = !!(keys.Semicolon || keys.KeyE || keys.KeyI);
+  const walking = !!(keys.Quote || keys.KeyC || keys.KeyU);
   const inputMag = Math.min(1, Math.hypot(sx, sy));
   const base = view.rot ? { ax:-sy, ay:sx } : { ax:sx, ay:sy };
   const v = { ax:base.ax * attackDir[i], ay:base.ay * attackDir[i] };
@@ -315,12 +320,12 @@ function cycleControlled(teamIdx) {
 
 function syncTouchActions() {
   const p = ctrl[0];
-  const owned = p && ball.owner === p;
-  shootBtn.textContent = owned ? '슛' : '태클';
-  passBtn.textContent = owned ? '패스' : '전환';
-  // 충전 게이지로 지금 얼마나 뜰지 보이게 한다. 소유 중에만 의미가 있다.
-  setCharge(shootBtn, owned && p.shootHeld ? p.shootCharge : 0);
-  setCharge(passBtn, owned && passHeld
+  const canKick = !!(p && canBufferKick(p));
+  shootBtn.textContent = canKick ? '슛' : '태클';
+  passBtn.textContent = canKick ? '패스' : '전환';
+  // 충전 게이지로 지금 얼마나 뜰지 보이게 한다. 소유·원터치 충전 중 표시.
+  setCharge(shootBtn, canKick && p.shootHeld ? p.shootCharge : 0);
+  setCharge(passBtn, canKick && passHeld
     ? Math.min(1, (performance.now() - passHoldTimer) / KICK_CHARGE_MS) : 0);
 }
 

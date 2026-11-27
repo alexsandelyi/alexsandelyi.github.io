@@ -278,6 +278,12 @@ function showSeasonComplete(cupWon) {
   ov.classList.remove('hidden');
 }
 
+function canBufferKick(p) {
+  if (ball.owner === p) return true;
+  if (ball.owner && ball.owner.side !== p.side) return false;
+  return Math.hypot(ball.x - p.x, ball.y - p.y) < 180;
+}
+
 function beginAction(teamIdx) {
   if (state === 'setpiece' && setpiece && setpiece.side === teamIdx) {
     takeSetpiece('shoot'); return;
@@ -285,7 +291,10 @@ function beginAction(teamIdx) {
   if (state !== 'play') return;
   const p = ctrl[teamIdx];
   if (!p) return;
-  if (ball.owner === p) {
+  if (canBufferKick(p)) {
+    if (!p.shootHeld) {
+      p.chargeAimX = p.aimX; p.chargeAimY = p.aimY;
+    }
     p.shootHeld = true;
     p.shootCharge = Math.max(0.12, p.shootCharge);
   } else {
@@ -297,11 +306,13 @@ function endAction(teamIdx) {
   const p = ctrl[teamIdx];
   if (!p || !p.shootHeld) return;
   p.shootHeld = false;
-  p.actShoot = Math.max(0.25, Math.min(1, p.shootCharge));
+  p.kickPower = Math.max(0.25, Math.min(1, p.shootCharge));
+  p.kickCurve = aimBend(p.chargeAimX, p.chargeAimY, p.aimX, p.aimY);
+  p.actShoot = 0.38;
   p.shootCharge = 0;
 }
 
-function act(teamIdx, kind, power = 0) {
+function act(teamIdx, kind, power = 0, curve = 0) {
   if (state === 'setpiece' && setpiece && setpiece.side === teamIdx) {
     takeSetpiece(kind); return;
   }
@@ -313,8 +324,8 @@ function act(teamIdx, kind, power = 0) {
     if (ball.owner !== p && p.tackleCd <= 0) {
       p.tackleT = TACKLE_T; p.tackleCd = 0.85;
     }
-  } else if (ball.owner === p) {
-    if (kind === 'pass') { p.actPass = 0.25; p.kickPower = power; }
-    if (kind === 'through') { p.actThrough = 0.25; p.kickPower = power; }
+  } else if (canBufferKick(p)) {
+    if (kind === 'pass') { p.actPass = 0.38; p.kickPower = power; p.kickCurve = curve; }
+    if (kind === 'through') { p.actThrough = 0.38; p.kickPower = power; p.kickCurve = curve; }
   }
 }

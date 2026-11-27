@@ -1,47 +1,54 @@
 'use strict';
-// 06-contact.js — 킥, 접촉 판정과 높이 구간(발·가슴·헤딩), 파울, 선수 분리, 득점
+// 06-contact.js — 킥·스핀, 연속 3D 접촉 판정(발·가슴·헤딩·발리), GK 패링/캐치, 파울, 득점
 // 클래식 <script> 라 전역 스코프를 공유한다. index.html 의 로드 순서를
 // 지켜야 한다 — const 는 뒤 파일에서 앞 파일을 참조할 수만 있다.
 
-function kickOwned(p, kind, power = 0.65) {
-  if (ball.owner !== p || p.kickCd > 0) return false;
+function computeKickSpin(p, kind, vx, vy, lift, power) {
+  const sp = Math.hypot(vx, vy);
+  const ux = sp > 1 ? vx / sp : attackDir[p.side];
+  const uy = sp > 1 ? vy / sp : 0;
+  // 충전 중 방향 꺾기(kickCurve) + 가로질러 달리며 찬 자연 커브
+  const crossVel = (p.vx * uy - p.vy * ux) / P_MAX;
+  const bend = (p.kickCurve || 0) * 14 * (0.45 + 0.55 * power) + crossVel * 4.5;
+  let spinTop = 1.5;
+  if (kind === 'shoot') {
+    spinTop = power > 0.36 ? (power - 0.32) * 14 : 1.5;
+  } else if (lift > 28) {
+    spinTop = -5.5 - power * 6;
+  }
+  return {
+    spinZ:Math.max(-20, Math.min(20, bend)),
+    spinTop:Math.max(-16, Math.min(16, spinTop))
+  };
+}
+
+function buildKickPlan(p, kind, power = 0.65) {
   let tx, ty, v, lift = 0;
   const aimMag = Math.hypot(p.aimX, p.aimY);
   const dir = attackDir[p.side];
-  // 누른 시간이 그대로 높이다.
-  // 0.4 이하는 땅볼로 둬서 짧게 누르면 예전과 같게 나간다.
   const lp = Math.max(0, (power - 0.4) / 0.6);
   if (kind === 'shoot') {
-    matchStats.shots[p.side]++;
     if (p.manualAim && aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 1000; ty = p.y + p.aimY / aimMag * 1000;
     } else {
-      const a = aimAt(p.side); tx = a.x; ty = a.y;
+      const a = aimAt(p.side, p); tx = a.x; ty = a.y;
     }
-    v = SHOOT_V * p.shotMul * (0.62 + 0.38 * power) *
-      (mode === '1p' && p === ctrl[0] ? 1 + HUMAN_ASSIST[level] * 0.8 : 1);
-    // 골라인까지의 거리로 역산해 크로스바 아래에 머물게 한다.
+    v = SHOOT_V * p.shotMul * (0.60 + 0.42 * power) *
+      (mode === '1p' && p === ctrl[0] ? 1 + HUMAN_ASSIST[level] * 0.6 : 1);
     lift = shotLift(Math.max(120, dir === 1 ? FW - p.x : p.x), v, power);
   } else {
     const through = kind === 'through';
-    // 사람의 `\` 패스는 무조건 땅볼이고, 누른 길이가 높이가 아니라 거리를
-    // 정한다. AI 도 이 함수를 쓰므로 조작 중인 선수에게만 적용한다 —
-    // 전부 땅볼로 막으면 AI 의 크로스가 사라진다. 사람이 띄우려면 `]`.
     const groundPass = p === ctrl[0] && !through;
-    // 사람의 `]` 는 무조건 센터링이다 — 위치·대상과 무관하게 늘 띄운다.
-    // 세기는 아래에서 통째로 덮어쓰므로 여기서는 계산에서 빼기만 한다.
     const humanCross = p === ctrl[0] && through;
     const t = passTarget(p, through);
     if (t) {
       const lead = through ? Math.min(230, Math.hypot(t.vx, t.vy) * 0.55 + 90) : 0;
       const tm = Math.hypot(t.vx, t.vy);
-      tx = t.x + (tm > 5 ? t.vx / tm : attackDir[p.side]) * lead;
+      tx = t.x + (tm > 5 ? t.vx / tm : dir) * lead;
       ty = t.y + (tm > 5 ? t.vy / tm : 0) * lead;
       const d = Math.hypot(tx - p.x, ty - p.y);
-      v = Math.min(PASS_V * p.passMul * (through ? 1.12 : 1),
-        420 + d * p.passMul * (through ? 1.0 : 0.9));
-      // 측면 깊은 위치에서 중앙으로 보내면 크로스다. 체공을 길게 줘서
-      // 받는 선수가 낙하 지점까지 따라갈 수 있게 한다.
+      const passCap = PASS_V * p.passMul * (through ? 1.15 : 1.05);
+      v = Math.min(passCap, 150 + d * p.passMul * (through ? 0.48 : 0.42));
       const cross = !groundPass && !humanCross &&
         Math.min(p.y, FH - p.y) < FH * 0.24 &&
         (dir === 1 ? p.x : FW - p.x) > FW * 0.58 &&
@@ -50,85 +57,103 @@ function kickOwned(p, kind, power = 0.65) {
         matchStats.crosses[p.side]++;
         lift = loftFor(d, v, 1.6);
       } else if (through && !humanCross && lp > 0.5) {
-        v *= 0.7; lift = loftFor(d, v, 2.0);        // 칩 — 수비선 뒤로
+        v *= 0.78; lift = loftFor(d, v, 2.0);
       } else if (!groundPass && !humanCross && lp > 0) {
-        v *= 0.9; lift = loftFor(d, v, 1.1) * lp;   // 로빙 패스
+        v *= 0.92; lift = loftFor(d, v, 1.1) * lp;
       }
     } else if (aimMag > 0.2) {
       tx = p.x + p.aimX / aimMag * 800; ty = p.y + p.aimY / aimMag * 800;
-      v = PASS_V * p.passMul * (through ? 0.95 : 0.8);
+      v = PASS_V * p.passMul * (through ? 0.95 : 0.82);
       if (!groundPass && !humanCross && lp > 0) {
-        v *= 0.9; lift = loftFor(800, v, 1.1) * lp;
+        v *= 0.92; lift = loftFor(800, v, 1.1) * lp;
       }
     } else {
-      const a = aimAt(p.side); tx = a.x; ty = a.y; v = PASS_V * 0.8;
+      const a = aimAt(p.side, p); tx = a.x; ty = a.y; v = PASS_V * 0.8;
     }
-    // 방향은 위에서 고른 대상·조준을 그대로 쓰고, 세기만 누른 길이로
-    // 덮어쓴다. 짧게 누르면 20m, 끝까지 누르면 54m 쯤 굴러간다.
     if (groundPass) {
-      v = PASS_V * p.passMul * (0.45 + 0.55 * power);
+      v = PASS_V * p.passMul * (0.45 + 0.58 * power);
       lift = 0;
     }
-    // 체공을 먼저 정하고 거리를 맞추는 순서다 — 그래야 머리 높이(2.3m)
-    // 위로 지나가 수비 발에 걸리지 않는다. 누른 길이가 체공과 거리를 함께
-    // 늘린다. 공기 저항 때문에 실제 낙하 지점은 reach 보다 짧다 —
-    // 실측 13.7m·정점 3.21m ~ 38.8m·정점 4.70m.
     if (humanCross) {
-      const hang = 1.7 + 0.5 * power;
       const reach = (16 + 42 * power) * M;
-      v = reach / hang;
-      lift = GRAVITY * hang / 2;
+      v = Math.min(B_MAX * 0.72, 240 + power * 230);
+      lift = loftFor(reach, v, 2.2);
       matchStats.crosses[p.side]++;
     }
   }
-  if (kind === 'pass' || kind === 'through') markOffside(p);
   const ang = Math.atan2(ty - p.y, tx - p.x);
   const vx = Math.cos(ang) * v, vy = Math.sin(ang) * v;
-  releaseBall(p, vx, vy, lift);
+  const spin = computeKickSpin(p, kind, vx, vy, lift, power);
+  return { vx, vy, lift, spinZ:spin.spinZ, spinTop:spin.spinTop };
+}
+
+function kickOwned(p, kind, power = 0.65) {
+  if (ball.owner !== p || p.kickCd > 0) return false;
+  if (kind === 'shoot') matchStats.shots[p.side]++;
+  if (kind === 'pass' || kind === 'through') markOffside(p);
+  const plan = buildKickPlan(p, kind, power);
+  releaseBall(p, plan.vx, plan.vy, plan.lift, plan.spinZ, plan.spinTop);
   if (kind === 'shoot') ball.shotSide = p.side;
-  else if (goalBoundKick(p.side, p.x, p.y, vx, vy)) {
+  else if (goalBoundKick(p.side, p.x, p.y, plan.vx, plan.vy)) {
     matchStats.shots[p.side]++;
     ball.shotSide = p.side;
   }
   p.actShoot = p.actPass = p.actThrough = 0;
+  p.kickCurve = 0;
   setPose(p, kind === 'shoot' ? 'shoot' : 'kick');
   return true;
 }
 
+// 소유 중이 아닌 움직이는 공에 대해 연속 3D 선분 접촉점을 계산한다.
 function ballContactPoint(p) {
-  let x = ball.x, y = ball.y;
-  if (!ball.owner && ball.shotSide === 1 - p.side) {
+  let x = ball.x, y = ball.y, z = ball.z;
+  if (!ball.owner && Math.hypot(ball.vx, ball.vy) > 5) {
     const ux = ball.x - ball.prevX, uy = ball.y - ball.prevY;
     const u2 = ux * ux + uy * uy;
-    if (u2 > 0) {
+    if (u2 > 1e-4 && u2 < 3600) {
       const q = Math.max(0, Math.min(1,
         ((p.x - ball.prevX) * ux + (p.y - ball.prevY) * uy) / u2));
       const px = ball.prevX + ux * q, py = ball.prevY + uy * q;
       if (Math.hypot(px - p.x, py - p.y) < Math.hypot(x - p.x, y - p.y)) {
-        x = px; y = py;
+        const pz = ball.prevZ !== undefined ? ball.prevZ : ball.z;
+        x = px; y = py; z = pz + (ball.z - pz) * q;
       }
     }
   }
-  return { x, y };
+  return { x, y, z };
 }
 
-// 무릎~가슴(0.5~1.5m). 아무도 제대로 다루지 못하고 몸에 튕긴다.
+// 무릎~가슴(0.5~1.5m): 강한 슛은 몸에 튕기고, 일반 공중볼은 진행 방향으로 쿠션 트래핑한다.
 function deflectBall(p, nx, ny) {
   matchStats.deflections[p.side]++;
-  const carry = Math.max(0, p.vx * nx + p.vy * ny);
-  const v = TOUCH_V * 0.8 + carry * 0.35;
-  let vx = ball.vx * 0.35 + nx * v, vy = ball.vy * 0.35 + ny * v;
-  const sp = Math.hypot(vx, vy);
-  if (sp > B_MAX) { vx = vx / sp * B_MAX; vy = vy / sp * B_MAX; }
-  ball.vx = vx; ball.vy = vy;
-  ball.vz = Math.abs(ball.vz) * 0.35 + 30;      // 몸에 맞고 살짝 뜬다
+  const relSp = Math.hypot(ball.vx - p.vx, ball.vy - p.vy);
+  const hardShot = ball.shotSide === 1 - p.side && relSp > 300;
+  if (hardShot) {
+    const carry = Math.max(0, p.vx * nx + p.vy * ny);
+    const v = TOUCH_V * 0.85 + carry * 0.35;
+    let vx = ball.vx * 0.35 + nx * v, vy = ball.vy * 0.35 + ny * v;
+    const sp = Math.hypot(vx, vy);
+    if (sp > B_MAX) { vx = vx / sp * B_MAX; vy = vy / sp * B_MAX; }
+    ball.vx = vx; ball.vy = vy;
+    ball.vz = Math.abs(ball.vz) * 0.35 + 32;
+    ball.spinZ *= 0.4; ball.spinTop = 0;
+  } else {
+    // 가슴 쿠션: 발 앞으로 부드럽게 떨어뜨린다.
+    const am = Math.hypot(p.aimX, p.aimY);
+    const fx = am > 0.1 ? p.aimX / am : nx;
+    const fy = am > 0.1 ? p.aimY / am : ny;
+    const cushion = 72 + Math.min(48, relSp * 0.15);
+    ball.vx = p.vx * 0.72 + fx * cushion;
+    ball.vy = p.vy * 0.72 + fy * cushion;
+    ball.vz = Math.max(14, Math.min(34, Math.abs(ball.vz) * 0.16 + 14));
+    ball.spinZ *= 0.25; ball.spinTop = -2;
+  }
   ball.freeCd = Math.max(ball.freeCd, 0.06);
-  p.trapCd = Math.max(p.trapCd, 0.18);
+  p.trapCd = Math.max(p.trapCd, 0.14);
   setPose(p, 'deflect');
 }
 
-// 헤딩(1.5~2.3m). 발로 닿을 수 없는 높이를 처리하는 유일한 수단이다.
-// 소유로 전환하지 않는 것이 헤딩 드리블을 막는 장치다.
+// 헤딩(1.5~2.3m). 소유로 전환하지 않고 머리로 슛·클리어링한다.
 function headBall(p, nx, ny) {
   if (p.headCd > 0) return;
   p.headCd = HEAD_CD;
@@ -137,156 +162,176 @@ function headBall(p, nx, ny) {
   const attacking = (dir === 1 ? FW - p.x : p.x) < FW * 0.32;
   let ang, v, lift;
   if (attacking) {
-    const a = aimAt(p.side);
+    const a = aimAt(p.side, p);
     ang = Math.atan2(a.y - p.y, a.x - p.x);
-    v = HEAD_V; lift = 18;
+    v = HEAD_V; lift = 10;
     matchStats.shots[p.side]++;
     ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
     ball.headShot = true;
   } else {
-    // 수비·중원 헤딩은 걷어내기 — 멀리 그리고 높이.
     ang = Math.atan2((FH / 2 - p.y) * 0.35 + (Math.random() * 2 - 1) * 260, dir * 800);
     v = HEAD_V * 1.15; lift = 120;
     ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
   }
-  if (p.manualAim) ang = angLerp(ang, Math.atan2(p.aimY, p.aimX), 0.6);
-  // 발보다 정확도가 나쁘다. 공격은 shot, 수비는 defense 로 오차를 줄인다.
+  if (p.manualAim) ang = angLerp(ang, Math.atan2(p.aimY, p.aimX), 0.72);
   const skill = (attacking ? p.stats.shot : p.stats.defense) / 99;
   ang += (Math.random() * 2 - 1) * HEAD_ERR * (1 - skill * 0.55);
   ball.vx = Math.cos(ang) * v; ball.vy = Math.sin(ang) * v;
-  ball.vz = lift;
+  ball.vz = lift; ball.spinZ *= 0.3; ball.spinTop = attacking ? 5 : -3;
   ball.freeCd = Math.max(ball.freeCd, 0.12);
   p.trapCd = Math.max(p.trapCd, HEAD_CD);
   setPose(p, 'header');
+  sfx('kick', 0.45);
+}
+
+function handleGKContact(p, contact, d, min) {
+  if (ball.shotSide === 1 - p.side && !ball.shotCounted) {
+    matchStats.onTarget[ball.shotSide]++; ball.shotCounted = true;
+  }
+  if (p.gkClaim) { matchStats.gkClaims[p.side]++; p.gkClaim = false; }
+  const wasEnemyShot = ball.shotSide === 1 - p.side;
+  const ballSp = Math.hypot(ball.vx, ball.vy, ball.vz);
+  const reachFrac = d / Math.max(1, min);
+  ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
+  ball.lastTouch = p;
+
+  // 강한 슛·먼 다이빙·높은 슛은 쳐내기(패링)로 세컨드볼/코너를 만든다.
+  const hardParry = wasEnemyShot && (ballSp > 460 || reachFrac > 0.60 || contact.z > HEAD_H * 0.85);
+  if (hardParry) {
+    const dir = attackDir[p.side];
+    const sideSign = contact.y < FH / 2 ? -1 : 1;
+    const ang = Math.atan2(sideSign * 0.82 + (Math.random() - 0.5) * 0.3, dir * 0.58);
+    const outV = 175 + Math.min(135, ballSp * 0.22);
+    ball.x = contact.x; ball.y = contact.y;
+    ball.vx = Math.cos(ang) * outV;
+    ball.vy = Math.sin(ang) * outV;
+    ball.vz = 55 + Math.random() * 55;
+    ball.spinZ = sideSign * 8; ball.spinTop = -3;
+    ball.freeCd = 0.08;
+    p.kickCd = 0.28; p.trapCd = 0.26;
+    setPose(p, 'gk-dive');
+    sfx('save', 0.9);
+    return;
+  }
+
+  // 제어 가능한 공은 품에 안고(gkHoldT) 잠시 뒤 패스 또는 펀트로 배급한다.
+  ball.owner = p;
+  p.gkHoldT = GK_HOLD_SEC;
+  p.kickCd = 0.25;
+  ball.x = contact.x; ball.y = contact.y; ball.z = 16;
+  ball.vx = p.vx; ball.vy = p.vy; ball.vz = 0;
+  ball.spinZ = 0; ball.spinTop = 0;
+  setPose(p, 'gk-claim');
+  sfx('save', 0.5);
+}
+
+function executeFirstTouch(p, kind) {
+  const power = p.kickPower || (kind === 'shoot' ? Math.min(1, p.actShoot) : 0.45);
+  if (kind === 'shoot') matchStats.shots[p.side]++;
+  if (kind === 'pass' || kind === 'through') markOffside(p);
+  const plan = buildKickPlan(p, kind, power);
+  const sp = Math.hypot(plan.vx, plan.vy);
+  ball.vx = sp > B_MAX ? plan.vx / sp * B_MAX : plan.vx;
+  ball.vy = sp > B_MAX ? plan.vy / sp * B_MAX : plan.vy;
+  // 발리/하프발리일 때는 기존 수직 속도를 지우고 새 탄도를 적용한다.
+  ball.vz = plan.lift;
+  ball.spinZ = plan.spinZ; ball.spinTop = plan.spinTop;
+  ball.freeCd = Math.max(ball.freeCd, 0.08);
+  p.trapCd = REOWN_CD;
+  p.kickCd = kind === 'shoot' ? 0.3 : 0.25;
+  p.actShoot = p.actPass = p.actThrough = 0;
+  p.kickCurve = 0;
+  if (kind === 'shoot') {
+    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
+  } else if (goalBoundKick(p.side, ball.x, ball.y, ball.vx, ball.vy)) {
+    matchStats.shots[p.side]++;
+    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
+  }
+  setPose(p, kind === 'shoot' ? 'shoot' : 'kick');
+  sfx('kick', Math.max(0.35, Math.min(1, Math.hypot(ball.vx, ball.vy, ball.vz) / SHOOT_V)));
 }
 
 function collide(p) {
-  // 높이 게이트. 헤딩 구간 위는 골키퍼만 닿는다. 헤딩 쿨다운 중이면
-  // 헤딩 구간에 아예 닿지 못한다 — 안 그러면 공만 밀어내며 lastTouch 를
-  // 계속 가져간다.
   const reachH = p.isGK ? GK_HIGH_H : p.headCd > 0 ? CHEST_H : HEAD_H;
-  if (ball.z > reachH) return;
   const contact = ballContactPoint(p);
+  if (contact.z > reachH) return;
   const dx = contact.x - p.x, dy = contact.y - p.y;
   const gkAssist = p.isGK && p.side === 0 && mode === '1p'
     ? 1 + HUMAN_ASSIST[level] : 1;
-  // 보통을 1로 정규화해 기존 물리 도달 거리를 보존하고, 난이도의 gk 축은
-  // 실제 다이빙 도달 범위를 단조롭게 바꾼다.
   const gkDifficulty = p.isGK ? p.gkDifficulty / LEVELS[1].gk : 1;
   const blockReach = !p.isGK && p.blockT > 0 && ball.shotSide === 1 - p.side
     ? SHOT_BLOCK_REACH * p.defenseMul : 0;
   const d = Math.hypot(dx, dy),
     min = p.reach * gkAssist * gkDifficulty + R_BALL + blockReach;
-  if (d >= min || d === 0) return;
+  if (d >= min) return;
   if (!ball.owner && callOffside(p)) return;
-  const nx = dx / d, ny = dy / d;
+  let nx, ny;
+  if (d > 1e-4) {
+    nx = dx / d; ny = dy / d;
+  } else {
+    const bm = Math.hypot(ball.vx, ball.vy);
+    nx = bm > 1 ? -ball.vx / bm : (p.aimX || attackDir[p.side]);
+    ny = bm > 1 ? -ball.vy / bm : (p.aimY || 0);
+  }
 
   if (ball.owner) {
     const owner = ball.owner;
     if (owner === p || owner.side === p.side) return;
+    if (owner.isGK && owner.gkHoldT > 0) return;      // 키퍼 손에 든 공은 탈취 불가
     const rel = Math.hypot(p.vx - owner.vx, p.vy - owner.vy);
     const assist = mode === '1p' && p.side === 0 ? HUMAN_ASSIST[level] : 0;
     const contest = p.defenseMul / (p.defenseMul + owner.defenseMul);
-    if ((p.tackleT > 0 && Math.random() < contest + .18 + assist) ||
+    // 공 쪽에서 정면/측면 진입 시 성공률 가산, 등 뒤 맹목 진입은 불리
+    const ownerDist = Math.hypot(owner.x - p.x, owner.y - p.y);
+    const angleBonus = d < ownerDist + 4 ? 0.20 : -0.14;
+    if ((p.tackleT > 0 && Math.random() < contest + 0.16 + assist + angleBonus) ||
         rel > P_MAX * 0.72) {
       owner.trapCd = REOWN_CD;
       ball.owner = null; ball.freeCd = 0.06; ball.lastTouch = p;
-      ball.x = p.x + nx * min; ball.y = p.y + ny * min;
-      ball.vx = p.vx * 0.75 + nx * TOUCH_V;
-      ball.vy = p.vy * 0.75 + ny * TOUCH_V;
+      ball.vx = p.vx * 0.8 + nx * TOUCH_V;
+      ball.vy = p.vy * 0.8 + ny * TOUCH_V;
+      ball.vz = 14;
+      ball.spinZ = (Math.random() * 2 - 1) * 5;
       p.tackleT = 0;
     }
+    return;
+  }
+
+  if (p.isGK) {
+    if (p.kickCd > 0 && ball.lastTouch === p) return;
+    handleGKContact(p, contact, d, min);
     return;
   }
 
   ball.x = p.x + nx * min; ball.y = p.y + ny * min;
   ball.lastTouch = p;
 
-  // 골키퍼는 잡아서 앞으로 크게 걷어낸다. 다른 선수처럼 튕겨내면
-  // 골문 앞에서 공이 계속 맴돌아 결국 실점한다.
-  if (p.isGK) {
-    if (ball.shotSide === 1 - p.side && !ball.shotCounted) {
-      matchStats.onTarget[ball.shotSide]++; ball.shotCounted = true;
-    }
-    if (p.gkClaim) { matchStats.gkClaims[p.side]++; p.gkClaim = false; }
-    // 슛을 막았으면 다이빙, 그냥 잡은 공이면 펀트 자세로 보여준다.
-    setPose(p, ball.shotSide === 1 - p.side ? 'gk-dive' : 'gk-punt');
-    ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
-    p.kickCd = 0.35;
-    const dir = attackDir[p.side];
-    const ang = Math.atan2((FH / 2 - p.y) * 0.6 + (Math.random() * 2 - 1) * 300, dir * 900);
-    // 잡은 공을 손에서 놓고 펀트한다. 전에는 1150(207km/h)으로 슛보다
-    // 빨랐고 B_MAX 클램프도 우회했다.
-    ball.vx = Math.cos(ang) * GK_CLEAR_V;
-    ball.vy = Math.sin(ang) * GK_CLEAR_V;
-    ball.z = 0;
-    ball.vz = loftFor(GK_CLEAR_DIST, GK_CLEAR_V, 1.8);
-    return;
-  }
-
   if (ball.shotSide === 1 - p.side) {
     if (!ball.blockCounted) matchStats.blocks[p.side]++;
     ball.blockCounted = true;
   }
 
-  // 높이 구간별 경합. 발 구간에서만 트래핑·드리블·의도한 킥이 나온다.
-  if (ball.z > CHEST_H) { headBall(p, nx, ny); return; }
-  if (ball.z > FOOT_H) { deflectBall(p, nx, ny); return; }
+  if (contact.z > CHEST_H) { headBall(p, nx, ny); return; }
 
-  // 여기는 **소유하지 않은 공**을 첫 터치로 차는 경로다. kickOwned 와
-  // 별개라 포즈도 따로 걸어야 한다 — 처음엔 빠뜨려서 한 경기 20슛에
-  // shoot 포즈가 한 번도 안 나왔다.
-  let vx, vy, deliberateKick = false;
-  if (p.actShoot > 0 && p.kickCd <= 0) {
-    deliberateKick = true;
-    setPose(p, 'shoot');
-    p.actShoot = 0; p.kickCd = 0.3;
-    matchStats.shots[p.side]++;
-    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
-    const a = aimAt(p.side);
-      const ang = Math.atan2(a.y - p.y, a.x - p.x);
-      vx = Math.cos(ang) * SHOOT_V * p.shotMul; vy = Math.sin(ang) * SHOOT_V * p.shotMul;
-  } else if (p.actPass > 0 && p.kickCd <= 0) {
-    deliberateKick = true;
-    setPose(p, 'kick');
-    p.actPass = 0; p.kickCd = 0.25;
-    markOffside(p);
-    const t = passTarget(p);
-    if (t) {
-      const ang = Math.atan2(t.y - p.y, t.x - p.x);
-      const d2 = Math.hypot(t.x - p.x, t.y - p.y);
-      const v = Math.min(PASS_V * p.passMul, 420 + d2 * 0.9 * p.passMul);
-      vx = Math.cos(ang) * v; vy = Math.sin(ang) * v;
-    } else {
-      const a = aimAt(p.side);
-      const ang = Math.atan2(a.y - p.y, a.x - p.x);
-      vx = Math.cos(ang) * PASS_V * 0.8 * p.passMul;
-      vy = Math.sin(ang) * PASS_V * 0.8 * p.passMul;
-    }
-  } else if (p.actThrough > 0 && p.kickCd <= 0) {
-    deliberateKick = true;
-    setPose(p, 'kick');
-    p.actThrough = 0; p.kickCd = 0.25;
-    markOffside(p);
-    const t = passTarget(p, true);
-    const tx = t ? t.x + attackDir[p.side] * 150 : p.x + attackDir[p.side] * 600;
-    const ty = t ? t.y : p.y;
-    const ang = Math.atan2(ty - p.y, tx - p.x);
-    vx = Math.cos(ang) * PASS_V; vy = Math.sin(ang) * PASS_V;
-  } else if (Math.hypot(ball.vx - p.vx, ball.vy - p.vy) < TRAP_V &&
-             d < TRAP_R && takePossession(p)) {
+  // 원터치 킥 / 발리: 발 구간뿐 아니라 무릎~가슴 구간에서도 선입력 발리 가능
+  const wantKind = p.kickCd <= 0
+    ? (p.actShoot > 0 ? 'shoot' : p.actThrough > 0 ? 'through' : p.actPass > 0 ? 'pass' : null)
+    : null;
+  if (wantKind) {
+    executeFirstTouch(p, wantKind);
     return;
-  } else {
-    // 빠른 공은 트래핑하지 못하고 몸에 튕긴다
-    const carry = Math.max(0, p.vx * nx + p.vy * ny);
-    const v = TOUCH_V + carry * 0.5;
-    vx = nx * v + p.vx * 0.3; vy = ny * v + p.vy * 0.3;
   }
-  if (deliberateKick && ball.shotSide < 0 &&
-      goalBoundKick(p.side, ball.x, ball.y, vx, vy)) {
-    matchStats.shots[p.side]++;
-    ball.shotSide = p.side; ball.shotCounted = ball.blockCounted = ball.headShot = false;
+  if (contact.z > FOOT_H) { deflectBall(p, nx, ny); return; }
+
+  if (Math.hypot(ball.vx - p.vx, ball.vy - p.vy) < TRAP_V &&
+      d < TRAP_R && takePossession(p)) {
+    return;
   }
+
+  // 빠른 공은 트래핑하지 못하고 몸에 튕긴다
+  const carry = Math.max(0, p.vx * nx + p.vy * ny);
+  const v = TOUCH_V + carry * 0.5;
+  const vx = nx * v + p.vx * 0.3, vy = ny * v + p.vy * 0.3;
   const sp = Math.hypot(vx, vy);
   ball.vx = sp > B_MAX ? vx / sp * B_MAX : vx;
   ball.vy = sp > B_MAX ? vy / sp * B_MAX : vy;
@@ -309,6 +354,7 @@ function callFoul(tackler, victim) {
   } else {
     notice = { text:'파울', timer:1.0, color:'#F2F7F4' };
   }
+  sfx('whistle', 0.9);
   if (ball.owner) { ball.owner.trapCd = REOWN_CD; ball.owner = null; }
   if (inPenaltyArea(victim.side, victim.x, victim.y)) {
     beginSetpiece('penalty', victim.side, {
@@ -319,7 +365,6 @@ function callFoul(tackler, victim) {
   }
 }
 
-// 선수끼리 겹치지 않게 (22명 → 231쌍, Canvas 2D 로 충분히 가볍다)
 let tackleFoulGuard = false;
 function separateAll() {
   tackleFoulGuard = false;
@@ -369,5 +414,6 @@ function goal(side) {
   score[side]++; lastScorer = side;
   ball.owner = null; setpiece = null;
   state = 'goal'; goalTimer = GOAL_PAUSE;
+  sfx('goal', 1);
   syncHud();
 }

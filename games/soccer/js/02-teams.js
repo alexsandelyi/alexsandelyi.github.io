@@ -20,7 +20,10 @@ const matchStats = {
 };
 const ball = {
   x:0, y:0, z:0, vx:0, vy:0, vz:0, owner:null, lastTouch:null, freeCd:0,
-  shotSide:-1, shotCounted:false, blockCounted:false, prevX:0, prevY:0,
+  shotSide:-1, shotCounted:false, blockCounted:false,
+  prevX:0, prevY:0, prevZ:0,
+  spinZ:0, spinTop:0, rollAngle:0,   // 스핀(횡회전·종회전 rad/s)과 구름 각도
+  postHitT:0, postHitX:0, postHitY:0, postHitZ:0,
   headShot:false                     // 마지막 슛이 헤딩이었나 (headGoals 집계)
 };
 const teams = [[], []];              // teams[0] = 우리(왼쪽 골 수비), teams[1] = 상대
@@ -199,8 +202,9 @@ function buildTeams() {
         ? R_PLAYER * GK_REACH_MUL * (.82 + stats.keeping / 99 * .30) : R_PLAYER,
       x:0, y:0, vx:0, vy:0,
       kickCd:0, trapCd:0, tackleCd:0, tackleT:0, blockT:0, headCd:0,
+      dribbleTouchCd:0, gkHoldT:0,
       actShoot:0, actPass:0, actThrough:0, shootHeld:false, shootCharge:0,
-      kickPower:0, gkClaim:false,
+      chargeAimX:attackDir[side], chargeAimY:0, kickPower:0, kickCurve:0, gkClaim:false,
       aimX:attackDir[side], aimY:0, manualAim:false, yellow:0,
       // 그리기 전용 (09-sprites.js). 물리·AI 는 읽지 않는다.
       pose:'idle', poseT:0, stride:0,
@@ -221,9 +225,11 @@ function resetPositions(kickSide) {
     const h = homePos(p);
     p.x = h.x; p.y = h.y; p.vx = p.vy = 0;
     p.kickCd = p.trapCd = p.tackleCd = p.tackleT = p.blockT = p.headCd = 0;
+    p.dribbleTouchCd = p.gkHoldT = 0;
     p.actShoot = p.actPass = p.actThrough = 0;
     p.shootHeld = false; p.shootCharge = 0;
-    p.kickPower = 0; p.gkClaim = false;
+    p.chargeAimX = attackDir[side]; p.chargeAimY = 0;
+    p.kickPower = 0; p.kickCurve = 0; p.gkClaim = false;
     p.pose = 'idle'; p.poseT = 0;      // stride 는 그대로 둔다 — 걸음 위상뿐이다
     // 킥오프: 공을 넣는 팀만 센터서클 안으로 한 명 들여보낸다
     if (p.role === 'FW' && p.no === 9 && side === kickSide) {
@@ -232,7 +238,9 @@ function resetPositions(kickSide) {
     }
   }
   ball.x = ball.prevX = FW / 2; ball.y = ball.prevY = FH / 2;
-  ball.vx = ball.vy = 0; ball.z = 0; ball.vz = 0;
+  ball.vx = ball.vy = 0; ball.z = ball.prevZ = 0; ball.vz = 0;
+  ball.spinZ = ball.spinTop = ball.rollAngle = 0;
+  ball.postHitT = 0;
   ball.owner = ball.lastTouch = null; ball.freeCd = 0;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false; offside = null;
   cam.x = FW / 2; cam.y = FH / 2;

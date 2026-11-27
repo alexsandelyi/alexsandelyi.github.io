@@ -3,6 +3,96 @@
 // 클래식 <script> 라 전역 스코프를 공유한다. index.html 의 로드 순서를
 // 지켜야 한다 — const 는 뒤 파일에서 앞 파일을 참조할 수만 있다.
 
+// ── 무의존 Web Audio 효과음 ─────────────────────────────────────────
+let audioCtx = null, sfxMuted = false, noiseBuf = null;
+function ensureAudio() {
+  if (sfxMuted) return null;
+  const AC = typeof AudioContext !== 'undefined' ? AudioContext
+    : (typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null);
+  if (!AC) return null;
+  if (!audioCtx) {
+    try { audioCtx = new AC(); } catch { return null; }
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  if (!noiseBuf && audioCtx) {
+    noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return audioCtx;
+}
+
+function sfx(kind, amp = 0.7) {
+  const ac = ensureAudio();
+  if (!ac) return;
+  const now = ac.currentTime, v = Math.max(0.1, Math.min(1, amp));
+  if (kind === 'kick' || kind === 'bounce' || kind === 'save') {
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = 'sine';
+    const f0 = kind === 'kick' ? 140 + v * 50 : kind === 'save' ? 120 : 95;
+    osc.frequency.setValueAtTime(f0, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + (kind === 'bounce' ? 0.05 : 0.09));
+    g.gain.setValueAtTime((kind === 'bounce' ? 0.14 : 0.28) * v, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(now); osc.stop(now + 0.11);
+    if (noiseBuf && kind !== 'bounce') {
+      const src = ac.createBufferSource(), f = ac.createBiquadFilter(), ng = ac.createGain();
+      src.buffer = noiseBuf; f.type = 'bandpass';
+      f.frequency.value = kind === 'save' ? 620 : 980;
+      ng.gain.setValueAtTime(0.16 * v, now);
+      ng.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      src.connect(f); f.connect(ng); ng.connect(ac.destination);
+      src.start(now); src.stop(now + 0.07);
+    }
+  } else if (kind === 'post') {
+    for (const freq of [640, 1210]) {
+      const osc = ac.createOscillator(), g = ac.createGain();
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(freq, now);
+      g.gain.setValueAtTime(0.22 * v, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.connect(g); g.connect(ac.destination);
+      osc.start(now); osc.stop(now + 0.29);
+    }
+  } else if (kind === 'whistle') {
+    const dur = v > 0.95 ? 0.42 : 0.22;
+    const osc = ac.createOscillator(), lfo = ac.createOscillator();
+    const lg = ac.createGain(), g = ac.createGain();
+    osc.type = 'sine'; osc.frequency.setValueAtTime(2860, now);
+    lfo.frequency.setValueAtTime(34, now); lg.gain.setValueAtTime(85, now);
+    lfo.connect(lg); lg.connect(osc.frequency);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.16, now + 0.02);
+    g.gain.setValueAtTime(0.16, now + dur - 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(now); lfo.start(now); osc.stop(now + dur + 0.01); lfo.stop(now + dur + 0.01);
+  } else if (kind === 'goal') {
+    if (noiseBuf) {
+      const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+      src.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = 680; f.Q.value = 0.7;
+      g.gain.setValueAtTime(0.01, now);
+      g.gain.linearRampToValueAtTime(0.26, now + 0.16);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+      src.connect(f); f.connect(g); g.connect(ac.destination);
+      src.start(now); src.stop(now + 1.0);
+    }
+    [523.25, 659.25, 783.99].forEach((freq, idx) => {
+      const osc = ac.createOscillator(), g = ac.createGain();
+      const t0 = now + idx * 0.07;
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.14, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
+      osc.connect(g); g.connect(ac.destination);
+      osc.start(t0); osc.stop(t0 + 0.38);
+    });
+  }
+}
+
+function syncMuteBtn() {
+  const b = document.getElementById('btnMute');
+  if (b) b.textContent = sfxMuted ? '음소거' : '소리';
+}
+
 // ── HUD·기록 ───────────────────────────────────────────────────────
 function syncHud() {
   document.getElementById('sHome').textContent = score[0];
@@ -27,7 +117,7 @@ function normalizeMatchSec(value) {
 function defaultSave() {
   return {
     version:2,
-    settings:{ level:1, matchSec:600, teams:[0,0], formation:'4-4-2', tactics:null },
+    settings:{ level:1, matchSec:600, teams:[0,0], formation:'4-4-2', tactics:null, muted:false },
     records:{ 0:emptyRecord(), 1:emptyRecord(), 2:emptyRecord() },
     progress:null
   };
@@ -67,7 +157,8 @@ function saveGame() {
   saveData.settings = {
     level, matchSec:MATCH_SEC, teams:selectedTeams.slice(),
     formation:selectedFormation[0],
-    tactics:tacticOverride[0] ? Object.assign({}, tacticOverride[0]) : null
+    tactics:tacticOverride[0] ? Object.assign({}, tacticOverride[0]) : null,
+    muted:sfxMuted
   };
   saveData.progress = competition ? JSON.parse(JSON.stringify(competition)) : null;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveData)); } catch {}
@@ -159,8 +250,8 @@ function initTeamUi() {
 
 // ── 시작 ───────────────────────────────────────────────────────────
 const HOWTO = isTouch
-  ? '공을 잡으면 이동 방향으로 조준합니다. <span class="keys">슛/태클</span> · <span class="keys">패스/선수전환</span> 버튼의 의미가 소유 여부에 따라 바뀝니다.<br>패스 버튼을 길게 누르면 띄우는 센터링, 스틱 세기가 걷기부터 스프린트까지 속도를 정합니다.'
-  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">;</span> 스프린트 · <span class="keys">\'</span> 걷기<br><span class="keys">Enter</span> 슛(공이 없으면 태클) · <span class="keys">\\</span> 땅볼 패스 · <span class="keys">]</span> 센터링(띄움) · <span class="keys">[</span> 선수전환<br>누른 길이가 거리를 정합니다. 땅으로 갈지 띄울지는 키로 고릅니다.';
+  ? '공을 잡거나 받기 직전에 <span class="keys">슛</span>·<span class="keys">패스</span>를 미리 눌러 원터치로 연결할 수 있습니다.<br>패스 버튼을 길게 누르면 띄우는 크로스, 스틱 세기가 걷기부터 스프린트까지 속도를 정합니다.'
+  : '<span class="keys">WASD/방향키</span> 이동·조준 · <span class="keys">E/I/;</span> 스프린트 · <span class="keys">C/U/\'</span> 걷기<br><span class="keys">Space/J/Enter</span> 슛·원터치(수비 시 태클) · <span class="keys">K/\\</span> 패스(수비 시 전환) · <span class="keys">L/]</span> 크로스·로빙 · <span class="keys">Q/[</span> 전환<br>길게 눌러 세기를 조절하고, 충전 중 방향을 꺾으면 감아차기(커브)가 걸립니다.';
 
 function showTitle() {
   state = 'title';
@@ -222,10 +313,16 @@ document.getElementById('btnCancelCompetition').addEventListener('click', () => 
 });
 for (const b of document.querySelectorAll('[data-pk]'))
   b.addEventListener('click', () => takePenaltyRound(+b.dataset.pk));
+const muteEl = document.getElementById('btnMute');
+if (muteEl) muteEl.addEventListener('click', () => {
+  sfxMuted = !sfxMuted; syncMuteBtn(); saveGame();
+});
 
 document.getElementById('howto').innerHTML = HOWTO;
 saveData = loadSaveData();
 const settings = saveData.settings;
+sfxMuted = !!settings.muted;
+syncMuteBtn();
 competition = saveData.progress &&
   ['tournament','league','season'].includes(saveData.progress.type)
   ? saveData.progress : null;

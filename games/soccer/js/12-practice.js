@@ -27,8 +27,10 @@ function soloReset(reason) {
   soloPlayer.aimX = attackDir[0]; soloPlayer.aimY = 0;
   soloPlayer.kickCd = soloPlayer.headCd = soloPlayer.tackleCd = 0;
   soloPlayer.tackleT = soloPlayer.blockT = 0;
+  soloPlayer.dribbleTouchCd = soloPlayer.gkHoldT = 0;
   soloPlayer.actShoot = soloPlayer.actPass = soloPlayer.actThrough = 0;
   soloPlayer.shootHeld = false; soloPlayer.shootCharge = 0;
+  soloPlayer.kickPower = 0; soloPlayer.kickCurve = 0;
   ctrl[0] = soloPlayer;
   setpiece = null; offside = null; state = 'play';
   soloBall(0);
@@ -65,7 +67,8 @@ function soloBall(z) {
   const p = soloPlayer || ctrl[0];
   if (!p) return;
   ball.lastTouch = null; ball.freeCd = 0;
-  ball.z = z; ball.vx = ball.vy = ball.vz = 0;
+  ball.z = ball.prevZ = z; ball.vx = ball.vy = ball.vz = 0;
+  ball.spinZ = ball.spinTop = 0; ball.postHitT = 0;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
   setpiece = null; offside = null;
   if (state !== 'play') state = 'play';
@@ -128,7 +131,8 @@ function drawSoloHud() {
   const lines = [
     `공 높이 ${(ball.z / M).toFixed(2)}m (${band})  ` +
       `속도 ${(Math.hypot(ball.vx, ball.vy) / M * 3.6).toFixed(1)}km/h  ` +
-      `수직 ${(ball.vz / M).toFixed(1)}m/s`,
+      `수직 ${(ball.vz / M).toFixed(1)}m/s  ` +
+      `스핀 횡${ball.spinZ.toFixed(1)} 종${ball.spinTop.toFixed(1)}`,
     `선수 ${p ? (Math.hypot(p.vx, p.vy) / M * 3.6).toFixed(1) : '-'}km/h  ` +
       `체력 ${p ? Math.round(p.energy * 100) : '-'}%  ` +
       `소유 ${ball.owner === p ? '나' : ball.owner ? '상대' : '없음'}  ` +

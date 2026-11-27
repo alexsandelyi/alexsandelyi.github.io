@@ -28,6 +28,16 @@ const AIR_K = 0.01354 / M;           // 15m/s 에서 3.05m/s²
 // 빠르게 가는 것이 "속도가 조절된다"는 감각의 물리적 근거다.
 const GRAVITY = 9.81 * M;            // 196.2 단위/s²
 const CROSSBAR = 2.44 * M;           // 48.8 — 규정 크로스바 높이
+const POST_R = 2.4;                  // 0.12m 골포스트·크로스바 반경
+const GOAL_DEPTH = 2.4 * M;          // 48 — 골망 깊이 2.4m
+const POST_REST = 0.72;              // 포스트·크로스바 반발 계수
+const NET_REST = 0.16, NET_DAMP = 0.45;
+const MAGNUS_XY = 0.022;             // 횡스핀(spinZ)에 의한 커브 가속 계수
+const MAGNUS_Z = 0.014;              // 종스핀(spinTop)에 의한 드롭/부양 계수
+const SPIN_AIR_DECAY = 0.35;         // 공중 회전 감쇠(/s)
+const SPIN_GROUND_DECAY = 3.2;       // 지면 회전 감쇠(/s)
+const DRIBBLE_LOSE_R = R_PLAYER + R_BALL + 44; // 드리블 이탈 한계 반경
+const GK_HOLD_SEC = 0.72;            // 골키퍼 캐치 후 배급 대기(초)
 const BOUNCE_Z = 0.5;                // 잔디 반발. 튈 때마다 높이 절반 이하
 const BOUNCE_XY = 0.8;               // 바운스에서 잃는 수평 속도
 const GROUND_EPS = 1;                // 0.05m 이하는 지면으로 본다
@@ -108,6 +118,7 @@ function movePlayer(p, ax, ay, dt, maxSpeed = P_MAX) {
   if (p.tackleT > 0) p.tackleT -= dt;
   if (p.blockT > 0) p.blockT -= dt;
   if (p.headCd > 0) p.headCd -= dt;
+  if (p.dribbleTouchCd > 0) p.dribbleTouchCd -= dt;
   if (p.actShoot > 0) p.actShoot -= dt;
   if (p.actPass > 0) p.actPass -= dt;
   if (p.actThrough > 0) p.actThrough -= dt;
@@ -179,6 +190,7 @@ function callOffside(p) {
   if (!offside || offside.side !== p.side || !offside.offenders.includes(p)) return false;
   matchStats.offsides[p.side]++;
   notice = { text:'오프사이드', timer:1.2, color:'#F2CE7A' };
+  sfx('whistle', 0.8);
   const side = 1 - p.side;
   offside = null;
   beginSetpiece('free', side, { x:p.x, y:p.y });
@@ -193,8 +205,18 @@ function outOfPlay(x, y) {
     return true;
   }
   if (x < 0 || x > FW) {
+    // 직전 프레임에서 골라인을 정상 통과한 경우 정확한 통과 시점의 y·z 로 판정한다.
+    const gxLine = x < 0 ? 0 : FW;
+    const dx = x - ball.prevX;
+    let yAt = y, zAt = ball.z;
+    if (Math.abs(dx) > 1e-6 && Math.abs(dx) < 60 && ball.prevX >= 0 && ball.prevX <= FW) {
+      const t = Math.max(0, Math.min(1, (gxLine - ball.prevX) / dx));
+      yAt = ball.prevY + (y - ball.prevY) * t;
+      const pz = ball.prevZ !== undefined ? ball.prevZ : ball.z;
+      zAt = pz + (ball.z - pz) * t;
+    }
     // 크로스바 위로 넘어간 공은 골이 아니다. 아래 골킥·코너로 떨어진다.
-    if (inGoalMouth(y) && ball.z < CROSSBAR) {
+    if (inGoalMouth(yAt) && zAt < CROSSBAR) {
       goal(1 - defendingAtGoal(x));
       return true;
     }
@@ -211,4 +233,91 @@ function outOfPlay(x, y) {
     return true;
   }
   return false;
+}
+
+// 선분 (x0,y0)->(x1,y1) 이 중심 (cx,cy), 반경 r 원에 처음 닿는 시각 t∈[0,1].
+function hitSegmentCircle(x0, y0, x1, y1, cx, cy, r) {
+  const fx = x0 - cx, fy = y0 - cy;
+  if (fx * fx + fy * fy <= r * r) return 0;
+  const dx = x1 - x0, dy = y1 - y0;
+  const a = dx * dx + dy * dy;
+  if (a <= 1e-8) return -1;
+  const b = 2 * (fx * dx + fy * dy);
+  const disc = b * b - 4 * a * (fx * fx + fy * fy - r * r);
+  if (disc < 0) return -1;
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  return t >= 0 && t <= 1 ? t : -1;
+}
+
+// 3D 골포스트(수직 원기둥)와 크로스바(수평 원기둥) 연속 충돌 판정.
+function collideGoalFrame() {
+  if (ball.x > 40 && ball.prevX > 40 && ball.x < FW - 40 && ball.prevX < FW - 40)
+    return false;
+  const gx = ball.x + ball.prevX < FW ? 0 : FW;
+  const gy0 = (FH - GOAL_H) / 2, gy1 = (FH + GOAL_H) / 2;
+  const hitR = POST_R + R_BALL;
+  const ux = ball.x - ball.prevX, uy = ball.y - ball.prevY, uz = ball.z - ball.prevZ;
+
+  for (const py of [gy0, gy1]) {
+    const t = hitSegmentCircle(ball.prevX, ball.prevY, ball.x, ball.y, gx, py, hitR);
+    if (t < 0) continue;
+    const cx = ball.prevX + ux * t, cy = ball.prevY + uy * t, cz = ball.prevZ + uz * t;
+    if (cz > CROSSBAR + hitR) continue;
+    const dx = cx - gx, dy = cy - py, d = Math.hypot(dx, dy);
+    const nx = d > 1e-4 ? dx / d : (gx === 0 ? 1 : -1);
+    const ny = d > 1e-4 ? dy / d : 0;
+    const vn = ball.vx * nx + ball.vy * ny;
+    if (vn >= 0) continue;
+    ball.vx -= (1 + POST_REST) * vn * nx;
+    ball.vy -= (1 + POST_REST) * vn * ny;
+    ball.vz *= 0.88;
+    const vt = -ball.vx * ny + ball.vy * nx;
+    ball.spinZ = Math.max(-22, Math.min(22, ball.spinZ + vt * 0.04));
+    ball.x = gx + nx * (hitR + 0.6); ball.y = py + ny * (hitR + 0.6);
+    ball.postHitT = 0.42; ball.postHitX = gx; ball.postHitY = py; ball.postHitZ = cz;
+    ball.shotSide = -1; ball.freeCd = Math.max(ball.freeCd, 0.05);
+    sfx('post', Math.min(1, Math.abs(vn) / 420));
+    return true;
+  }
+
+  const tc = hitSegmentCircle(ball.prevX, ball.prevZ, ball.x, ball.z, gx, CROSSBAR, hitR);
+  if (tc < 0) return false;
+  const cx = ball.prevX + ux * tc, cy = ball.prevY + uy * tc, cz = ball.prevZ + uz * tc;
+  if (cy < gy0 - R_BALL || cy > gy1 + R_BALL) return false;
+  const dx = cx - gx, dz = cz - CROSSBAR, d = Math.hypot(dx, dz);
+  const nx = d > 1e-4 ? dx / d : (gx === 0 ? 1 : -1);
+  const nz = d > 1e-4 ? dz / d : 0;
+  const vn = ball.vx * nx + ball.vz * nz;
+  if (vn >= 0) return false;
+  ball.vx -= (1 + POST_REST) * vn * nx;
+  ball.vz -= (1 + POST_REST) * vn * nz;
+  ball.vy *= 0.9;
+  ball.spinTop = Math.max(-18, Math.min(18, ball.spinTop + (ball.vx * nz - ball.vz * nx) * 0.03));
+  ball.x = gx + nx * (hitR + 0.6);
+  ball.z = Math.max(0, CROSSBAR + nz * (hitR + 0.6));
+  ball.postHitT = 0.42; ball.postHitX = gx; ball.postHitY = cy; ball.postHitZ = CROSSBAR;
+  ball.shotSide = -1; ball.freeCd = Math.max(ball.freeCd, 0.05);
+  sfx('post', Math.min(1, Math.abs(vn) / 420));
+  return true;
+}
+
+// 득점 직후 공이 골망 안으로 파고들어 그물에 감속·안착하게 한다.
+function updateGoalNetBall(dt) {
+  ball.prevX = ball.x; ball.prevY = ball.y; ball.prevZ = ball.z;
+  applyBallMotion(dt);
+  const gy0 = (FH - GOAL_H) / 2 + R_BALL, gy1 = (FH + GOAL_H) / 2 - R_BALL;
+  const left = ball.x < FW / 2;
+  const backX = left ? -GOAL_DEPTH + R_BALL : FW + GOAL_DEPTH - R_BALL;
+  if ((left && ball.x < backX) || (!left && ball.x > backX)) {
+    ball.x = backX; ball.vx = (left ? 1 : -1) * Math.abs(ball.vx) * NET_REST;
+    ball.vy *= NET_DAMP; ball.vz *= NET_DAMP;
+  }
+  if (ball.y < gy0 || ball.y > gy1) {
+    ball.y = Math.max(gy0, Math.min(gy1, ball.y));
+    ball.vy = -ball.vy * NET_REST; ball.vx *= NET_DAMP;
+  }
+  if (ball.z > CROSSBAR - R_BALL) {
+    ball.z = CROSSBAR - R_BALL; ball.vz = -Math.abs(ball.vz) * NET_REST;
+    ball.vx *= NET_DAMP; ball.vy *= NET_DAMP;
+  }
 }

@@ -1,44 +1,27 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""손으로 그린 일러스트를 스프라이트 셀로 옮긴다.
+"""손으로 그린 일러스트를 2D 스프라이트 아틀라스 셀로 변환한다.
 
-sprite-gen.py 가 500줄을 넘어서 분리했다.
-
-원본은 tools/sprite-src/ 에 있다 — 내려받기 폴더 같은 저장소 밖 경로에
-두면 재생성이 안 된다. 배경 제거는 tools/sprite-cutout.py 가 먼저 한다.
+원본은 tools/sprite-src/ 에 있다 — 저장소 밖 경로에 두지 않는다.
 """
 
-import math
 import os
 import sys
 
 from PIL import Image
 
-
 SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sprite-src')
 
-# 셀 한 변(px). sprite-gen.py 와 같아야 한다.
-CELL = 64
+CELL = 96            # 셀 한 변(px) — 24×12 2D 아틀라스 (2304×2304, GPU 안전)
+FOOT_Y = 0.92        # 서 있는 포즈 발바닥 앵커 위치 (셀 높이 비율)
+DIVE_Y = 0.82        # 공중 다이빙 포즈 하단 앵커 위치
+STAND_H = 0.80       # 서 있는 포즈 통일 키 (셀 높이 비율)
+PRONE_SPAN = 0.90    # 태클·다이빙처럼 가로로 누운 포즈 최대 폭
 
-# 손으로 그린 일러스트를 쓰는 포즈. (원본 파일들, 좌우 반전을 더할지).
-#
-# 원본은 **위를 향해** 그려져 있고 여기서 +x 를 향하게 돌린다.
-# 좌우 반전을 켜면 파일마다 두 프레임이 나온다 — 걷기·달리기는 두 다리가
-# 번갈아 나가는 대칭 동작이라 반전 한 장이 반 주기를 그대로 대신한다.
-#
-# 프레임 수 = 파일 수 × (반전이면 2, 아니면 1). SHEET 와 어긋나면 build()
-# 가 실패시킨다.
 IMPORTED = {
     'idle': (['stand0.png'], False),
-    # 새 사선 탑다운 원본은 모두 +x(화면 오른쪽)를 향한다. 얼굴 방향이
-    # 보이는 그림을 좌우 반전하면 애니메이션 중 선수가 뒤집혀 보이므로
-    # 프레임마다 반전하지 않고 원본 프레임을 그대로 쓴다.
     'walk': (['stand0.png', 'stand1.png'], False),
     'run': (['run.png', 'run1.png'], False),
-    # 아래 10개는 생성기(sprite-ai)로 뽑은 오버헤드 그림이다. 포즈마다
-    # 한 장뿐이라 SHEET 의 장수도 1 로 맞춰 뒀다 — 애니메이션이 아니라
-    # 정지 포즈다. 프레임을 늘리려면 원본을 더 받아 여기와 SHEET 를
-    # 함께 고친다.
     'kick': (['kick.png'], False),
     'shoot': (['shoot.png'], False),
     'charge': (['charge.png'], False),
@@ -51,118 +34,115 @@ IMPORTED = {
     'gk-punt': (['gk-punt.png'], False),
 }
 
-# 일러스트의 크기 기준은 **어깨 폭**이다 (전체 길이가 아니다). 길이로
-# 맞추면 달릴 때 뒤로 뻗은 다리 때문에 선수가 작아지고, 서 있을 때 커진다.
-# 벡터 포즈의 몸통 폭(2 × torso_ry × ART)과 같은 값으로 둔다.
-KIT_W = 20.0
-
 _imported_cache = {}
 
 
-def _kit(px):
-    """유니폼(파랑) 픽셀인가. 살색·검정·흰 줄무늬는 제외된다."""
-    r, g, b, a = px
-    return a > 40 and b - max(r, g) > 30 and b > 55
+def _kit_weight(r, g, b, a):
+    """부드러운 파랑 유니폼 가중치(0..1). 안티앨리어싱 경계 잔여물을 줄인다."""
+    if a <= 16:
+        return 0.0
+    excess = b - max(r, g)
+    if excess <= 20 or b <= 62:
+        return 0.0
+    w1 = min(1.0, (excess - 20.0) / 34.0)
+    w2 = min(1.0, (b - 62.0) / 36.0)
+    return w1 * w2
 
 
 def _split_layers(src):
-    """유니폼 층(회색조)과 나머지 층으로 나누고, 어깨 폭을 잰다.
-
-    유니폼을 **회색조로 남기는** 이유는 런타임에서 multiply 로 팀 색을
-    곱하기 위해서다. 단색을 부으면 접힘과 그림자가 사라져 평면이 된다.
-    """
+    """유니폼 회색조 층(고정 명도 곡선)과 디테일 층으로 분리하고 몸통 중심 X를 구한다."""
+    w, h = src.size
     px = src.load()
-    lum, widest = [], 0
-    for y in range(src.height):
-        xs = []
-        for x in range(src.width):
-            q = px[x, y]
-            if _kit(q):
-                lum.append(0.299 * q[0] + 0.587 * q[1] + 0.114 * q[2])
-                xs.append(x)
-        if xs:
-            widest = max(widest, xs[-1] - xs[0] + 1)
-    if not lum:
-        sys.exit('유니폼 색을 찾지 못했습니다')
-    lo, hi = min(lum), max(lum)
-
-    shirt = Image.new('RGBA', src.size, (0, 0, 0, 0))
-    detail = Image.new('RGBA', src.size, (0, 0, 0, 0))
+    shirt = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    detail = Image.new('RGBA', (w, h), (0, 0, 0, 0))
     sp, dp = shirt.load(), detail.load()
-    for y in range(src.height):
-        for x in range(src.width):
-            q = px[x, y]
-            if q[3] == 0:
+    kit_x_sum, kit_w_sum = 0.0, 0.0
+
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
                 continue
-            if _kit(q):
-                L = 0.299 * q[0] + 0.587 * q[1] + 0.114 * q[2]
-                t = (L - lo) / max(1e-6, hi - lo)
-                v = int(round(255 * (0.55 + 0.45 * t)))   # 너무 어두워지지 않게
-                sp[x, y] = (v, v, v, q[3])
-            else:
-                dp[x, y] = q
-    return shirt, detail, widest
+            kw = _kit_weight(r, g, b, a)
+            if kw > 0.0:
+                # 전 프레임 공통 명도 곡선: 프레임 간 밝기 깜빡임을 제거하고
+                # 팀 색 곱셈 시 선명하고 풍성한 음영을 유지한다.
+                lum = 0.299 * r + 0.587 * g + 0.114 * b
+                t = max(0.0, min(1.0, (lum - 24.0) / 84.0))
+                v = int(round(156.0 + 99.0 * t))
+                sa = int(round(a * kw))
+                if sa > 0:
+                    sp[x, y] = (v, v, v, sa)
+                    kit_x_sum += x * kw
+                    kit_w_sum += kw
+            da = int(round(a * (1.0 - kw)))
+            if da > 0:
+                # 경계 픽셀의 파란 번짐을 중화해 주황·노랑 팀 색에서 푸른 테두리를 없앤다.
+                if 0.02 < kw < 0.98 and b > max(r, g):
+                    nb = int(round(max(r, g) + (b - max(r, g)) * 0.15))
+                    dp[x, y] = (r, g, nb, da)
+                else:
+                    dp[x, y] = (r, g, b, da)
+
+    cx = (kit_x_sum / kit_w_sum) if kit_w_sum > 1e-3 else (w * 0.5)
+    return shirt, detail, cx
 
 
-def _place(shirt, detail, k, flip):
-    """배율 k 로 층 한 쌍을 셀에 앉히고, 중심에서 가장 먼 픽셀 거리를 잰다."""
-    pair, worst = [], 0.0
+def _is_prone(fname):
+    return fname.startswith('tackle') or fname.startswith('gk-dive')
+
+
+def _place_cell(src, flip, fname):
+    """원본을 여백 절단 → 2x 슈퍼샘플링 분리 → 발바닥 앵커 기준 셀 배치한다."""
+    bbox = src.getbbox()
+    if not bbox:
+        sys.exit('빈 스프라이트 원본: ' + fname)
+    cropped = src.crop(bbox)
+    if flip:
+        cropped = cropped.transpose(Image.FLIP_LEFT_RIGHT)
+    bw, bh = cropped.size
+
+    margin = 2
+    max_w = CELL - margin * 2
+    max_h = int(round(CELL * (DIVE_Y if fname.startswith('gk-dive') else FOOT_Y))) - margin
+    if _is_prone(fname):
+        target = CELL * PRONE_SPAN
+        k = min(target / max(bw, bh), max_w / bw, max_h / bh)
+    else:
+        k = min((CELL * STAND_H) / bh, max_w / bw, max_h / bh)
+
+    tw = max(1, int(round(bw * k)))
+    th = max(1, int(round(bh * k)))
+    # 2배 슈퍼샘플링 해상도에서 층을 나눈 뒤 축소해 안티앨리어싱을 깔끔하게 유지
+    hi = cropped.resize((tw * 2, th * 2), Image.LANCZOS)
+    shirt_hi, detail_hi, cx_hi = _split_layers(hi)
+    shirt = shirt_hi.resize((tw, th), Image.LANCZOS)
+    detail = detail_hi.resize((tw, th), Image.LANCZOS)
+
+    anchor_y = int(round(CELL * (DIVE_Y if fname.startswith('gk-dive') else FOOT_Y)))
+    # 몸통 중심을 셀 X 중앙에 맞추되 좌우 경계를 넘지 않게 클램프
+    cx = cx_hi * 0.5
+    px = int(round(CELL * 0.5 - cx))
+    px = max(margin, min(CELL - margin - tw, px))
+    py = max(margin, anchor_y - th)
+
+    cells = []
     for layer in (shirt, detail):
-        img = layer.transpose(Image.FLIP_LEFT_RIGHT) if flip else layer
-        # 원본 일러스트 자체가 +x(화면 오른쪽)를 향하므로 회전하지 않는다.
-        # drawPlayerSprite()가 실제 aim 각도로 회전시킨다.
-        img = img.resize((max(1, int(round(img.width * k))),
-                          max(1, int(round(img.height * k)))), Image.LANCZOS)
         cell = Image.new('RGBA', (CELL, CELL), (0, 0, 0, 0))
-        cell.paste(img, ((CELL - img.width) // 2, (CELL - img.height) // 2))
-        p = cell.load()
-        for y in range(CELL):
-            for x in range(CELL):
-                if p[x, y][3] > 8:
-                    worst = max(worst, math.hypot(x - (CELL - 1) / 2.0,
-                                                  y - (CELL - 1) / 2.0))
-        pair.append(cell)
-    return pair, worst
-
-
-def _fit(shirt, detail, kit_w, flip, where=''):
-    """층 한 쌍을 어깨 폭 기준으로 셀에 앉힌다.
-
-    기준은 어깨 폭이지만, 그대로 맞추면 내접원을 넘는 포즈가 있다 —
-    다이빙처럼 몸을 길게 뻗는 자세다. 넘으면 **그 포즈만 줄여서** 넣는다.
-    sprite-gen.py 의 check_fit() 은 넘으면 생성을 실패시키므로, 여기서
-    줄이지 않으면 시트를 아예 만들 수 없다. 회전 시 모서리가 잘리는 것보다
-    한 포즈가 조금 작은 편이 낫다.
-    """
-    k = KIT_W / kit_w
-    pair, worst = _place(shirt, detail, k, flip)
-    lim = CELL / 2.0 - 1.0
-    if worst > lim:
-        k *= lim / worst * 0.98        # 재샘플링 오차 여유
-        pair, after = _place(shirt, detail, k, flip)
-        # 반올림된 리사이즈 치수와 두 레이어의 외곽 픽셀 때문에 한 번의
-        # 비율 계산 뒤에도 셀 경계를 아주 조금 넘을 수 있다. 실제 결과를
-        # 다시 확인하며 안전 여백 안으로 들어올 때까지 반복한다.
-        for _ in range(4):
-            if after <= lim:
-                break
-            k *= lim / after * 0.98
-            pair, after = _place(shirt, detail, k, flip)
-        print('  %s: 내접원 초과(%.1f) → %.0f%% 로 줄임 (%.1f)'
-              % (where or '?', worst, 100 * k * kit_w / KIT_W, after))
-    return pair
+        cell.paste(layer, (px, py))
+        cells.append(cell)
+    return cells
 
 
 def load_imported(files, mirror):
-    """일러스트들을 셀 크기의 (유니폼, 나머지) 쌍 목록으로 돌려준다."""
+    """일러스트들을 CELL×CELL (유니폼, 디테일) 쌍 목록으로 돌려준다."""
     key = (tuple(files), mirror)
     if key in _imported_cache:
         return _imported_cache[key]
     frames = []
     for fname in files:
         src = Image.open(os.path.join(SRC_DIR, fname)).convert('RGBA')
-        shirt, detail, kit_w = _split_layers(src)
         for flip in ((False, True) if mirror else (False,)):
-            frames.append(_fit(shirt, detail, kit_w, flip, fname))
+            frames.append(_place_cell(src, flip, fname))
     _imported_cache[key] = frames
     return frames

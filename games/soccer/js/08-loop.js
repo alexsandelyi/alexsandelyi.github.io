@@ -5,6 +5,7 @@
 
 // ── 루프 ───────────────────────────────────────────────────────────
 function endHalf() {
+  sfx('whistle', 1);
   if (half === 1) {
     half = 2;
     attackDir[0] *= -1; attackDir[1] *= -1;
@@ -31,6 +32,7 @@ function advanceClock(dt, stopped = false) {
 
 function step(dt) {
   if (notice.timer > 0) notice.timer -= dt;
+  if (ball.postHitT > 0) ball.postHitT = Math.max(0, ball.postHitT - dt);
   if (offside) {
     offside.timer -= dt;
     if (offside.timer <= 0) offside = null;
@@ -49,6 +51,7 @@ function step(dt) {
   if (state === 'goal') {
     advanceClock(dt, true);
     if (state !== 'goal') return;
+    updateGoalNetBall(dt);
     goalTimer -= dt;
     if (goalTimer <= 0) {
       const kick = lastScorer === 0 ? 1 : 0;
@@ -91,11 +94,15 @@ function step(dt) {
         // 사람 팀의 나머지 선수는 아군 AI (난이도와 무관하게 보통 수준)
         const a = aiPlayer(p, dt, LEVELS[1],
           chaser[side].has(p) && p !== ctrl[side], offsideLine[side]);
+        const am = Math.hypot(a.ax, a.ay);
+        if (am > 0.1) { p.aimX = a.ax / am; p.aimY = a.ay / am; }
         const targetSpeed = staminaLimitedSpeed(p, a.targetSpeed, dt);
         movePlayer(p, a.ax, a.ay, dt,
           abilityAdjustedSpeed(p, a.targetSpeed, targetSpeed));
       } else {
         const a = aiPlayer(p, dt, L, chaser[side].has(p), offsideLine[side]);
+        const am = Math.hypot(a.ax, a.ay);
+        if (am > 0.1) { p.aimX = a.ax / am; p.aimY = a.ay / am; }
         const targetSpeed = staminaLimitedSpeed(p, a.targetSpeed, dt);
         movePlayer(p, a.ax, a.ay, dt,
           abilityAdjustedSpeed(p, a.targetSpeed, targetSpeed) *
@@ -106,9 +113,9 @@ function step(dt) {
 
   separateAll();
   if (state !== 'play') return;
-  if (ball.owner) {
+  if (ball.owner && !(ball.owner.isGK && ball.owner.gkHoldT > 0)) {
     const p = ball.owner;
-    if (p.actShoot > 0) kickOwned(p, 'shoot', p.actShoot);
+    if (p.actShoot > 0) kickOwned(p, 'shoot', p.kickPower || Math.min(1, p.actShoot));
     else if (p.actThrough > 0) kickOwned(p, 'through', p.kickPower);
     else if (p.actPass > 0) kickOwned(p, 'pass', p.kickPower);
   }
