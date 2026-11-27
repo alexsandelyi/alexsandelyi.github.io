@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 (() => {
   const $ = id => document.getElementById(id);
   const names = ['돼지', '코뿔소', '악어', '하마', '코끼리', '모두 함께'];
