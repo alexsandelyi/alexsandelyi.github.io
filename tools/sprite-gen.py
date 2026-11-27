@@ -1,15 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""선수 2D 스프라이트 아틀라스 생성기 — games/soccer/assets/players.png
+"""3D 관절 프로시저럴 선수 2D 아틀라스 생성기 — games/soccer/assets/players.png
 
-tools/sprite-src/ 의 고해상도 일러스트 271장을 GPU 친화적인 2D 멀티행
-아틀라스(24열 × 12행 × 2레이어, 96×96 셀 → 2304×2304)로 패킹한다.
+tools/sprite_rig.py 로 8방향 idle(1f)·walk(4f)·run(6f)·액션 10종(3f)을
+일관된 3D 관절 모델에서 생성해 24열 2D 아틀라스로 패킹한다.
 
     python tools/sprite-gen.py
-
-시트를 다시 만들면 09-sprites.js 의 SPRITE_V·SPRITE_CELL·SPRITE_COLS·
-SPRITE_ROWS·POSES 를 함께 갱신한다. 이어서 반드시 실행한다:
-
     node tools/soccer-sim.js --restamp
 """
 
@@ -27,10 +23,10 @@ try:
 except ImportError:
     sys.exit('Pillow 가 필요합니다:  pip install Pillow')
 
-from sprite_import import CELL, FOOT_Y, IMPORTED, STAND_H, load_imported  # noqa: E402
+from sprite_rig import CELL, FOOT_Y, STAND_H, render_pose  # noqa: E402
 
 ATLAS_COLS = 24
-ROWS = 2  # 상단 절반 = 유니폼 회색조(틴트), 하단 절반 = 피부·머리·바지·축구화·윤곽
+ROWS = 2  # 상단 절반 = 유니폼 회색조(틴트), 하단 절반 = 피부·머리·바지·양말·축구화·외곽선
 
 SHEET = [
     ('idle', 1), ('walk', 2), ('run', 2), ('kick', 1), ('shoot', 1),
@@ -38,27 +34,18 @@ SHEET = [
     ('deflect', 1), ('gk-dive', 1), ('gk-claim', 1), ('gk-punt', 1)
 ]
 
-# atan2 순서(E, SE, S, SW, W, NW, N, NE) 8방향 이동 프레임
+# atan2 순서(E, SE, S, SW, W, NW, N, NE)와 각도(도)
 DIRECTIONS = [
-    ('e', ['dir-e.png', 'dir-e2.png']),
-    ('se', ['dir-se.png', 'dir-se2.png']),
-    ('s', ['dir-s.png', 'dir-s2.png']),
-    ('sw', ['dir-sw.png', 'dir-sw2.png']),
-    ('w', ['dir-w.png', 'dir-w2.png']),
-    ('nw', ['dir-nw.png', 'dir-nw2.png']),
-    ('n', ['dir-n.png', 'dir-n2.png']),
-    ('ne', ['dir-ne.png', 'dir-ne2.png'])
+    ('e', 0.0), ('se', 45.0), ('s', 90.0), ('sw', 135.0),
+    ('w', 180.0), ('nw', 225.0), ('n', 270.0), ('ne', 315.0)
 ]
-
+RUN_FRAMES = 6
+WALK_FRAMES = 4
+IDLE_FRAMES = 1
+ACTION_FRAMES = 3
 ACTION_NAMES = [
     'kick', 'shoot', 'charge', 'tackle', 'block',
     'header', 'deflect', 'gk-dive', 'gk-claim', 'gk-punt'
-]
-ACTION_DIRECTIONS = [
-    (action, [(direction, [
-        '%s-%s-%d.png' % (action, direction, frame) for frame in range(3)
-    ]) for direction, _files in DIRECTIONS])
-    for action in ACTION_NAMES
 ]
 
 
@@ -72,48 +59,54 @@ def _paste_cell(sheet, idx, pair, grid_rows):
 
 def build():
     total = (sum(n for _, n in SHEET) +
-             sum(len(files) for _, files in DIRECTIONS) +
-             sum(len(files) for _, directions in ACTION_DIRECTIONS
-                 for _, files in directions))
+             len(DIRECTIONS) * RUN_FRAMES +
+             len(ACTION_NAMES) * len(DIRECTIONS) * ACTION_FRAMES +
+             len(DIRECTIONS) * IDLE_FRAMES +
+             len(DIRECTIONS) * WALK_FRAMES)
     grid_rows = int(math.ceil(total / float(ATLAS_COLS)))
     sheet = Image.new('RGBA', (ATLAS_COLS * CELL, grid_rows * CELL * ROWS), (0, 0, 0, 0))
 
     index, col = [], 0
     for name, n in SHEET:
-        if name not in IMPORTED:
-            sys.exit('IMPORTED 에 없는 포즈: ' + name)
-        got = load_imported(*IMPORTED[name])
-        if len(got) != n:
-            sys.exit('%s: 원본 %d장인데 SHEET 는 %d장' % (name, len(got), n))
         index.append((name, col, n))
         for f in range(n):
-            _paste_cell(sheet, col + f, got[f], grid_rows)
+            _paste_cell(sheet, col + f, render_pose(name, f, n, 0.0), grid_rows)
         col += n
 
+    # 8방향 6프레임 스프린트(DIRECTION_POSES)
     direction_index = []
-    for name, files in DIRECTIONS:
-        got = load_imported(files, False)
-        if len(got) != len(files):
-            sys.exit('%s: direction source count mismatch' % name)
-        direction_index.append((name, col, len(files)))
-        for f in range(len(files)):
-            _paste_cell(sheet, col + f, got[f], grid_rows)
-        col += len(files)
+    for dname, yaw in DIRECTIONS:
+        direction_index.append((dname, col, RUN_FRAMES))
+        for f in range(RUN_FRAMES):
+            _paste_cell(sheet, col + f, render_pose('run', f, RUN_FRAMES, yaw), grid_rows)
+        col += RUN_FRAMES
 
+    # 10종 액션 × 8방향 × 3프레임
     action_direction_index = []
-    for action, directions in ACTION_DIRECTIONS:
+    for action in ACTION_NAMES:
         action_slots = []
-        for direction, files in directions:
-            got = load_imported(files, False)
-            if len(got) != len(files):
-                sys.exit('%s-%s: action source count mismatch' % (action, direction))
-            action_slots.append((direction, col, len(files)))
-            for f in range(len(files)):
-                _paste_cell(sheet, col + f, got[f], grid_rows)
-            col += len(files)
+        for dname, yaw in DIRECTIONS:
+            action_slots.append((dname, col, ACTION_FRAMES))
+            for f in range(ACTION_FRAMES):
+                _paste_cell(sheet, col + f, render_pose(action, f, ACTION_FRAMES, yaw), grid_rows)
+            col += ACTION_FRAMES
         action_direction_index.append((action, action_slots))
 
-    return sheet, grid_rows, index, direction_index, action_direction_index
+    # 8방향 대기(idle, 1프레임) & 걷기/조깅(walk, 4프레임)
+    idle_index = []
+    for dname, yaw in DIRECTIONS:
+        idle_index.append((dname, col, IDLE_FRAMES))
+        _paste_cell(sheet, col, render_pose('idle', 0, 1, yaw), grid_rows)
+        col += IDLE_FRAMES
+
+    walk_index = []
+    for dname, yaw in DIRECTIONS:
+        walk_index.append((dname, col, WALK_FRAMES))
+        for f in range(WALK_FRAMES):
+            _paste_cell(sheet, col + f, render_pose('walk', f, WALK_FRAMES, yaw), grid_rows)
+        col += WALK_FRAMES
+
+    return sheet, grid_rows, index, direction_index, action_direction_index, idle_index, walk_index
 
 
 def poses_literal(index):
@@ -146,7 +139,8 @@ def action_directions_literal(index):
     return ',\n'.join(lines)
 
 
-def stamp_js(root, png_path, grid_rows, index, direction_index, action_direction_index):
+def stamp_js(root, png_path, grid_rows, index, direction_index,
+             action_direction_index, idle_index, walk_index):
     js = os.path.join(root, 'games', 'soccer', 'js', '09-sprites.js')
     if not os.path.exists(js):
         return None
@@ -166,6 +160,10 @@ def stamp_js(root, png_path, grid_rows, index, direction_index, action_direction
         (r"const POSES = \{[^}]*\};", 'const POSES = {\n' + poses_literal(index) + '\n};'),
         (r"const DIRECTION_POSES = \{[^}]*\};",
          'const DIRECTION_POSES = {' + directions_literal(direction_index) + '};'),
+        (r"const IDLE_DIRECTION_POSES = \{[^}]*\};",
+         'const IDLE_DIRECTION_POSES = {' + directions_literal(idle_index) + '};'),
+        (r"const WALK_DIRECTION_POSES = \{[^}]*\};",
+         'const WALK_DIRECTION_POSES = {' + directions_literal(walk_index) + '};'),
         (r"const ACTION_DIRECTION_POSES = \{[\s\S]*?\};",
          'const ACTION_DIRECTION_POSES = {\n' + action_directions_literal(action_direction_index) + '\n};'),
     ]
@@ -184,13 +182,13 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = os.path.join(root, 'games', 'soccer', 'assets')
     os.makedirs(out, exist_ok=True)
-    sheet, grid_rows, index, direction_index, action_direction_index = build()
+    sheet, grid_rows, idx, dir_idx, act_idx, idle_idx, walk_idx = build()
     path = os.path.join(out, 'players.png')
     sheet.save(path, optimize=True)
     kb = os.path.getsize(path) / 1024.0
     print('%s  %d x %d  (%dcols x %drows, %.1f KB)'
           % (os.path.relpath(path, root), sheet.width, sheet.height, ATLAS_COLS, grid_rows, kb))
-    stamped = stamp_js(root, path, grid_rows, index, direction_index, action_direction_index)
+    stamped = stamp_js(root, path, grid_rows, idx, dir_idx, act_idx, idle_idx, walk_idx)
     if stamped:
         print('SPRITE_V = %s   SPRITE_BODY = %s' % stamped)
         print('이어서 `node tools/soccer-sim.js --restamp`')

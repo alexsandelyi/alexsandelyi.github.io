@@ -400,14 +400,17 @@ const SELF_TEST = `
           poseSlotsValid = false;
         }
       }
-      var directionSlotsValid = DIRECTION_ORDER.length === 8 &&
+      var runFrames = DIRECTION_POSES.e ? DIRECTION_POSES.e[1] : 0;
+      var directionSlotsValid = DIRECTION_ORDER.length === 8 && runFrames >= 2 &&
         DIRECTION_ORDER.every(function (nameD, iD) {
           var slotD = DIRECTION_POSES[nameD];
-          return slotD && slotD[1] === 2 && slotD[0] === poseColumns + iD * 2;
+          return slotD && slotD[1] === runFrames && slotD[0] === poseColumns + iD * runFrames &&
+            IDLE_DIRECTION_POSES[nameD] && IDLE_DIRECTION_POSES[nameD][1] === 1 &&
+            WALK_DIRECTION_POSES[nameD] && WALK_DIRECTION_POSES[nameD][1] === 4;
         });
       var actionNames = ['kick', 'shoot', 'charge', 'tackle', 'block', 'header',
         'deflect', 'gk-dive', 'gk-claim', 'gk-punt'];
-      var actionColumns = poseColumns + DIRECTION_ORDER.length * 2;
+      var actionColumns = poseColumns + DIRECTION_ORDER.length * runFrames;
       var actionDirectionSlotsValid = actionNames.every(function (actionName, iA) {
         var mapA = ACTION_DIRECTION_POSES[actionName];
         return mapA && DIRECTION_ORDER.every(function (nameA, iA2) {
@@ -426,13 +429,10 @@ const SELF_TEST = `
       launch(30, 120, 500); ball.spinTop = 14;
       for (var td1 = 0; td1 < 30; td1++) updateBall(dtq);
       var topspinDips = ball.z < zNoSpin - 3;
-      var gyTop = (FH - GOAL_H) / 2;
-      launch(20, 0, 600); ball.x = ball.prevX = FW - 6; ball.y = ball.prevY = gyTop;
-      updateBall(dtq);
-      var postRebounds = ball.vx < 0 && ball.postHitT > 0;
+      launch(20, 0, 600); ball.x = ball.prevX = FW - 6; ball.y = ball.prevY = (FH - GOAL_H) / 2;
+      updateBall(dtq); var postRebounds = ball.vx < 0 && ball.postHitT > 0;
       launch(CROSSBAR, 0, 600); ball.x = ball.prevX = FW - 6; ball.y = ball.prevY = FH / 2;
-      updateBall(dtq);
-      var crossbarRebounds = ball.vx < 0 && ball.postHitT > 0;
+      updateBall(dtq); var crossbarRebounds = ball.vx < 0 && ball.postHitT > 0;
       startMatch('1p');
       var dr = teams[0][9]; dr.x = FW / 2; dr.y = FH / 2; dr.vx = SPEED_RUN; dr.vy = 0;
       dr.aimX = 1; dr.aimY = 0; dr.dribbleTouchCd = 0;
@@ -442,22 +442,18 @@ const SELF_TEST = `
       var dribbleNotGlued = ball.x > dr.x + 10;
       startMatch('1p');
       var gk0 = teams[0][0]; gk0.x = 60; gk0.y = FH / 2; gk0.vx = gk0.vy = 0; gk0.kickCd = 0;
-      launch(10, 0, -120); ball.x = ball.prevX = 72; ball.y = ball.prevY = FH / 2;
-      collide(gk0);
+      launch(10, 0, -120); ball.x = ball.prevX = 72; ball.y = ball.prevY = FH / 2; collide(gk0);
       var gkCatches = ball.owner === gk0 && gk0.gkHoldT > 0;
       startMatch('1p');
       var gk1 = teams[0][0]; gk1.x = 60; gk1.y = FH / 2; gk1.vx = gk1.vy = 0; gk1.kickCd = 0;
-      launch(12, 0, -650); ball.shotSide = 1; ball.x = ball.prevX = 76; ball.y = ball.prevY = FH / 2;
-      collide(gk1);
+      launch(12, 0, -650); ball.shotSide = 1; ball.x = ball.prevX = 76; ball.y = ball.prevY = FH / 2; collide(gk1);
       var gkParries = !ball.owner && ball.vx > 0;
-      launch(25, 180, 420); ball.spinZ = 8;
-      var pred = ballLanding();
+      launch(25, 180, 420); ball.spinZ = 8; var pred = ballLanding();
       for (var lp2 = 0; lp2 < 300; lp2++) { updateBall(dtq); if (ball.z <= 0) break; }
       var landingMatchesDrag = Math.hypot(ball.x - pred.x, ball.y - pred.y) < 30;
       startMatch('1p');
       var ot = teams[0][9]; ctrl[0] = ot; ot.x = 900; ot.y = 680; ot.kickCd = 0;
-      launch(0, 0, -80); ball.x = ball.prevX = 950; ball.y = ball.prevY = 680;
-      act(0, 'pass', 0.5);
+      launch(0, 0, -80); ball.x = ball.prevX = 950; ball.y = ball.prevY = 680; act(0, 'pass', 0.5);
       var oneTouchBuffered = ot.actPass > 0;
 
       return {
@@ -465,38 +461,27 @@ const SELF_TEST = `
         offsideMarked:marked, offsideCalled:called, foulCalled:foul, yellowCard:card,
         offsideClearedOnValidTouch:offsideClearedOnValidTouch,
         collisionPassMarked:collisionPassMarked, fastTouchCalled:fastTouchCalled,
-        easyOffsideDisabled:easyOffsideDisabled,
-        stateAfterGoal:stateAfterGoal, stateAfterHalftime:stateAfterHalftime,
-        stateAtNewMatch:stateAtNewMatch,
+        easyOffsideDisabled:easyOffsideDisabled, stateAfterGoal:stateAfterGoal,
+        stateAfterHalftime:stateAfterHalftime, stateAtNewMatch:stateAtNewMatch,
         penaltyShotCounted:penaltyShotCounted, penaltyOnTarget:penaltyOnTarget,
-        goalClassification:goalClassification,
-        physicalScale:physicalScale, straightSpeed:straightSpeed,
-        ballHeightConstants:ballHeightConstants,
+        goalClassification:goalClassification, physicalScale:physicalScale,
+        straightSpeed:straightSpeed, ballHeightConstants:ballHeightConstants,
         bounceDecay:bounceDecay, dragModel:dragModel, ballistic:ballistic,
         slowBallStops:slowBallStops, airLighterThanGround:airLighterThanGround,
-        crossbar:crossbar,
-        footTraps:footTraps, chestDeflects:chestDeflects, headHeads:headHeads,
-        aboveHeadUntouched:aboveHeadUntouched, gkReachesHigh:gkReachesHigh,
-        movementPaces:movementPaces,
-        collisionRadius:collisionRadius, separatedDrawScale:separatedDrawScale,
-        cameraViewportStable:cameraViewportStable,
-        matchLengthMigration:matchLengthMigration,
-        formationsValid:formationsValid, ratingsOrdered:ratingsOrdered,
-        tournamentValid:tournamentValid, shootoutRules:shootoutRules,
-        storageMigrated:storageMigrated, leagueSchedule:leagueSchedule,
-        leagueRanking:leagueRanking, seasonValid:seasonValid,
-        leagueCompleted:leagueCompleted, seasonToCup:seasonToCup,
-        recordsSummary:recordsSummary,
-        straightRunUnaffected:straightRunUnaffected,
-        turnBrakeReverses:turnBrakeReverses,
-        turnBrakeKillsDrift:turnBrakeKillsDrift,
-        poseFramesReachable:poseFramesReachable,
-        poseUnreachableList:poseUnreachable.join(',') || true,
-        poseSlotsValid:poseSlotsValid,
-        directionSlotsValid:directionSlotsValid,
-        actionDirectionSlotsValid:actionDirectionSlotsValid,
-        magnusCurves:magnusCurves, topspinDips:topspinDips,
-        postRebounds:postRebounds, crossbarRebounds:crossbarRebounds,
+        crossbar:crossbar, footTraps:footTraps, chestDeflects:chestDeflects,
+        headHeads:headHeads, aboveHeadUntouched:aboveHeadUntouched, gkReachesHigh:gkReachesHigh,
+        movementPaces:movementPaces, collisionRadius:collisionRadius,
+        separatedDrawScale:separatedDrawScale, cameraViewportStable:cameraViewportStable,
+        matchLengthMigration:matchLengthMigration, formationsValid:formationsValid,
+        ratingsOrdered:ratingsOrdered, tournamentValid:tournamentValid, shootoutRules:shootoutRules,
+        storageMigrated:storageMigrated, leagueSchedule:leagueSchedule, leagueRanking:leagueRanking,
+        seasonValid:seasonValid, leagueCompleted:leagueCompleted, seasonToCup:seasonToCup,
+        recordsSummary:recordsSummary, straightRunUnaffected:straightRunUnaffected,
+        turnBrakeReverses:turnBrakeReverses, turnBrakeKillsDrift:turnBrakeKillsDrift,
+        poseFramesReachable:poseFramesReachable, poseUnreachableList:poseUnreachable.join(',') || true,
+        poseSlotsValid:poseSlotsValid, directionSlotsValid:directionSlotsValid,
+        actionDirectionSlotsValid:actionDirectionSlotsValid, magnusCurves:magnusCurves,
+        topspinDips:topspinDips, postRebounds:postRebounds, crossbarRebounds:crossbarRebounds,
         dribbleNotGlued:dribbleNotGlued, gkCatches:gkCatches, gkParries:gkParries,
         landingMatchesDrag:landingMatchesDrag, oneTouchBuffered:oneTouchBuffered
       };

@@ -6,12 +6,12 @@
 // 시트는 tools/sprite-gen.py 가 만든다. 시트를 다시 만들면 SPRITE_V 가
 // 자동으로 갱신되므로 반드시 `node tools/soccer-sim.js --restamp` 를 이어서 돌린다.
 
-const SPRITE_V = '259a4f82';        // sprite-gen.py 가 덮어쓴다
+const SPRITE_V = '65d6ee4d';        // sprite-gen.py 가 덮어쓴다
 const SPRITE_CELL = 96;             // sprite-gen.py 가 덮어쓴다
 const SPRITE_COLS = 24;             // sprite-gen.py 가 덮어쓴다
-const SPRITE_ROWS = 12;             // sprite-gen.py 가 덮어쓴다
-const SPRITE_FOOT_Y = 0.92;         // 셀 높이 대비 발바닥 앵커 위치
-const SPRITE_BODY = 0.272;          // sprite-gen.py 가 덮어쓴다
+const SPRITE_ROWS = 15;             // sprite-gen.py 가 덮어쓴다
+const SPRITE_FOOT_Y = 0.87;         // 셀 높이 대비 발바닥 앵커 위치
+const SPRITE_BODY = 0.2652;          // sprite-gen.py 가 덮어쓴다
 // 그리기 전용 배율. 논리 충돌 반경(R_PLAYER=6)에는 영향을 주지 않는다.
 const SPRITE_GAIN = 1.12;
 
@@ -22,18 +22,20 @@ const POSES = {
   deflect:[11, 1], 'gk-dive':[12, 1], 'gk-claim':[13, 1],
   'gk-punt':[14, 1]
 };
-const DIRECTION_POSES = {e:[15, 2], se:[17, 2], s:[19, 2], sw:[21, 2], w:[23, 2], nw:[25, 2], n:[27, 2], ne:[29, 2]};
+const DIRECTION_POSES = {e:[15, 6], se:[21, 6], s:[27, 6], sw:[33, 6], w:[39, 6], nw:[45, 6], n:[51, 6], ne:[57, 6]};
+const IDLE_DIRECTION_POSES = {e:[303, 1], se:[304, 1], s:[305, 1], sw:[306, 1], w:[307, 1], nw:[308, 1], n:[309, 1], ne:[310, 1]};
+const WALK_DIRECTION_POSES = {e:[311, 4], se:[315, 4], s:[319, 4], sw:[323, 4], w:[327, 4], nw:[331, 4], n:[335, 4], ne:[339, 4]};
 const ACTION_DIRECTION_POSES = {
-  kick:{e:[31, 3], se:[34, 3], s:[37, 3], sw:[40, 3], w:[43, 3], nw:[46, 3], n:[49, 3], ne:[52, 3]},
-  shoot:{e:[55, 3], se:[58, 3], s:[61, 3], sw:[64, 3], w:[67, 3], nw:[70, 3], n:[73, 3], ne:[76, 3]},
-  charge:{e:[79, 3], se:[82, 3], s:[85, 3], sw:[88, 3], w:[91, 3], nw:[94, 3], n:[97, 3], ne:[100, 3]},
-  tackle:{e:[103, 3], se:[106, 3], s:[109, 3], sw:[112, 3], w:[115, 3], nw:[118, 3], n:[121, 3], ne:[124, 3]},
-  block:{e:[127, 3], se:[130, 3], s:[133, 3], sw:[136, 3], w:[139, 3], nw:[142, 3], n:[145, 3], ne:[148, 3]},
-  header:{e:[151, 3], se:[154, 3], s:[157, 3], sw:[160, 3], w:[163, 3], nw:[166, 3], n:[169, 3], ne:[172, 3]},
-  deflect:{e:[175, 3], se:[178, 3], s:[181, 3], sw:[184, 3], w:[187, 3], nw:[190, 3], n:[193, 3], ne:[196, 3]},
-  'gk-dive':{e:[199, 3], se:[202, 3], s:[205, 3], sw:[208, 3], w:[211, 3], nw:[214, 3], n:[217, 3], ne:[220, 3]},
-  'gk-claim':{e:[223, 3], se:[226, 3], s:[229, 3], sw:[232, 3], w:[235, 3], nw:[238, 3], n:[241, 3], ne:[244, 3]},
-  'gk-punt':{e:[247, 3], se:[250, 3], s:[253, 3], sw:[256, 3], w:[259, 3], nw:[262, 3], n:[265, 3], ne:[268, 3]}
+  kick:{e:[63, 3], se:[66, 3], s:[69, 3], sw:[72, 3], w:[75, 3], nw:[78, 3], n:[81, 3], ne:[84, 3]},
+  shoot:{e:[87, 3], se:[90, 3], s:[93, 3], sw:[96, 3], w:[99, 3], nw:[102, 3], n:[105, 3], ne:[108, 3]},
+  charge:{e:[111, 3], se:[114, 3], s:[117, 3], sw:[120, 3], w:[123, 3], nw:[126, 3], n:[129, 3], ne:[132, 3]},
+  tackle:{e:[135, 3], se:[138, 3], s:[141, 3], sw:[144, 3], w:[147, 3], nw:[150, 3], n:[153, 3], ne:[156, 3]},
+  block:{e:[159, 3], se:[162, 3], s:[165, 3], sw:[168, 3], w:[171, 3], nw:[174, 3], n:[177, 3], ne:[180, 3]},
+  header:{e:[183, 3], se:[186, 3], s:[189, 3], sw:[192, 3], w:[195, 3], nw:[198, 3], n:[201, 3], ne:[204, 3]},
+  deflect:{e:[207, 3], se:[210, 3], s:[213, 3], sw:[216, 3], w:[219, 3], nw:[222, 3], n:[225, 3], ne:[228, 3]},
+  'gk-dive':{e:[231, 3], se:[234, 3], s:[237, 3], sw:[240, 3], w:[243, 3], nw:[246, 3], n:[249, 3], ne:[252, 3]},
+  'gk-claim':{e:[255, 3], se:[258, 3], s:[261, 3], sw:[264, 3], w:[267, 3], nw:[270, 3], n:[273, 3], ne:[276, 3]},
+  'gk-punt':{e:[279, 3], se:[282, 3], s:[285, 3], sw:[288, 3], w:[291, 3], nw:[294, 3], n:[297, 3], ne:[300, 3]}
 };
 const DIRECTION_ORDER = ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'];
 
@@ -41,7 +43,7 @@ const POSE_DUR = {
   kick:0.26, shoot:0.30, header:0.30, deflect:0.16,
   'gk-dive':0.36, 'gk-punt':0.30
 };
-const POSE_STRIDE = { walk:7, run:20 };
+const POSE_STRIDE = { walk:8, run:9 };
 const POSE_TIMER = { tackle:['tackleT', TACKLE_T], block:['blockT', BLOCK_T] };
 
 const spriteSheets = {};
@@ -138,8 +140,9 @@ function playerDirection(p) {
 function directionFrame(p, pose, slot) {
   if (pose === 'idle' || slot[1] === 1) return slot[0];
   const step = POSE_STRIDE[pose] || POSE_STRIDE.run;
-  const i = Math.floor(Math.abs(p.stride) / step) % slot[1];
-  return slot[0] + i;
+  const n = slot[1];
+  const i = Math.floor(p.stride / step) % n;
+  return slot[0] + (i < 0 ? i + n : i);
 }
 
 function actionDirectionFrame(p, pose, slot) {
@@ -161,12 +164,12 @@ function drawPlayerSprite(p, r) {
   const sheet = spriteReady ? spriteSheetFor(p) : null;
   if (!sheet) return 0;
   const pose = playerPose(p);
-  const directional = pose === 'idle' || pose === 'walk' || pose === 'run';
   const direction = playerDirection(p);
-  const movementSlot = directional ? DIRECTION_POSES[direction] : null;
-  const actionSlot = directional ? null
+  const movementSlot = pose === 'idle' ? IDLE_DIRECTION_POSES[direction]
+    : pose === 'walk' ? WALK_DIRECTION_POSES[direction]
+    : pose === 'run' ? DIRECTION_POSES[direction] : null;
+  const actionSlot = movementSlot ? null
     : (ACTION_DIRECTION_POSES[pose] && ACTION_DIRECTION_POSES[pose][direction]);
-  const slot = movementSlot || actionSlot;
   const col = movementSlot ? directionFrame(p, pose, movementSlot)
     : actionSlot ? actionDirectionFrame(p, pose, actionSlot)
     : poseFrame(p, pose);
@@ -175,11 +178,9 @@ function drawPlayerSprite(p, r) {
   const drawS = (2 * r * SPRITE_GAIN / SPRITE_BODY) * scale;
   const point = projectWorld(p.x, p.y);
 
-  // 달리기 바운스·헤딩 점프를 화면 Y로 자연스럽게 보탠다(물리 좌표는 불변).
+  // 헤딩 점프 리프트(달리기 바운스는 6프레임 3D 리깅에 이미 포함)
   let liftPx = 0;
-  if (pose === 'run' || pose === 'walk') {
-    liftPx = Math.abs(Math.sin(p.stride * 0.14)) * (pose === 'run' ? 2.2 : 0.9) * scale;
-  } else if (pose === 'header' && p.poseT > 0) {
+  if (pose === 'header' && p.poseT > 0) {
     const prog = 1 - p.poseT / (POSE_DUR.header || 0.3);
     liftPx = Math.sin(Math.max(0, Math.min(1, prog)) * Math.PI) * 14 * scale;
   }
