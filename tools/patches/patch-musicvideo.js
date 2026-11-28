@@ -44,7 +44,7 @@ const OLD_STATE_GO =
   `  const go = n => {\n` +
   `    setActive(n);`;
 
-const NEW_STATE_GO =
+const PREV_STATE_GO =
   `  const [active, setActive] = React.useState(() => window.location.hash === '#mv' ? 'mv_page' : '게임');\n` +
   `  React.useEffect(() => {\n` +
   `    const syncHash = () => setActive(window.location.hash === '#mv' ? 'mv_page' : '게임');\n` +
@@ -72,6 +72,52 @@ const NEW_STATE_GO =
   `    }\n` +
   `  };\n` +
   `  const openMv = () => {\n` +
+  `    setActive('mv_page');\n` +
+  `    try {\n` +
+  `      if (window.location.hash !== '#mv') history.pushState(null, '', '#mv');\n` +
+  `    } catch {}\n` +
+  `  };\n` +
+  `  const go = n => {\n` +
+  `    setActive(n);\n` +
+  `    clearMvHash();`;
+
+const NEW_STATE_GO =
+  `  const [active, setActive] = React.useState(() => window.location.hash === '#mv' ? 'mv_page' : '게임');\n` +
+  `  const [mvStamp, setMvStamp] = React.useState(() => Date.now());\n` +
+  `  React.useEffect(() => {\n` +
+  `    const syncHash = () => {\n` +
+  `      if (window.location.hash === '#mv') {\n` +
+  `        setMvStamp(Date.now());\n` +
+  `        setActive('mv_page');\n` +
+  `      } else {\n` +
+  `        setActive('게임');\n` +
+  `      }\n` +
+  `    };\n` +
+  `    window.addEventListener('hashchange', syncHash);\n` +
+  `    window.addEventListener('popstate', syncHash);\n` +
+  `    return () => {\n` +
+  `      window.removeEventListener('hashchange', syncHash);\n` +
+  `      window.removeEventListener('popstate', syncHash);\n` +
+  `    };\n` +
+  `  }, []);\n` +
+  `  const clearMvHash = () => {\n` +
+  `    try {\n` +
+  `      if (window.location.hash === '#mv') {\n` +
+  `        history.pushState(null, '', window.location.pathname + window.location.search);\n` +
+  `      }\n` +
+  `    } catch {}\n` +
+  `  };\n` +
+  `  const goHome = () => {\n` +
+  `    setActive('게임');\n` +
+  `    setI(0);\n` +
+  `    clearMvHash();\n` +
+  `    if (scroller.current) {\n` +
+  `      cancelAnimationFrame(raf.current);\n` +
+  `      scroller.current.scrollTop = 0;\n` +
+  `    }\n` +
+  `  };\n` +
+  `  const openMv = () => {\n` +
+  `    setMvStamp(Date.now());\n` +
   `    setActive('mv_page');\n` +
   `    try {\n` +
   `      if (window.location.hash !== '#mv') history.pushState(null, '', '#mv');\n` +
@@ -147,25 +193,25 @@ const NEW_LOGO_M =
   `    }\n` +
   `  }, "\\uC77C\\uBE75"), /*#__PURE__*/React.createElement("div", {`;
 
-// 패치 v0 (뮤직비디오 아이콘 추가 전) 및 v1 (외부 페이지 이동 방식) 모두 지원
-const OLD_NAV_BLOCK_V0 =
-  `  }, [['gamepad-2', '게임'], ['shopping-bag', 'links_page'], ['clapperboard', '케이 무비'], ['music', '케이 팝'], ['users', '커뮤니티'], ['settings', null]].map(([n, sec]) => /*#__PURE__*/React.createElement("button", {\n` +
+// 원본(추천 아이템 미포함) 및 구버전(shopping-bag / links_page 포함) 모두 지원
+const OLD_NAV_CLEAN =
+  `  }, [['gamepad-2', '게임'], ['clapperboard', '케이 무비'], ['music', '케이 팝'], ['users', '커뮤니티'], ['settings', null]].map(([n, sec]) => /*#__PURE__*/React.createElement("button", {\n` +
   `    key: n,\n` +
-  `    onClick: () => sec === 'links_page' ? (window.location.href = 'links.html') : (sec && go(sec)),`;
+  `    onClick: () => sec && go(sec),`;
 
-const OLD_NAV_BLOCK_V1 =
-  `  }, [['gamepad-2', '게임'], ['youtube', 'mv_page'], ['shopping-bag', 'links_page'], ['clapperboard', '케이 무비'], ['music', '케이 팝'], ['users', '커뮤니티'], ['settings', null]].map(([n, sec]) => /*#__PURE__*/React.createElement("button", {\n` +
-  `    key: n,\n` +
-  `    title: sec === 'mv_page' ? '뮤직비디오' : sec === 'links_page' ? '추천 아이템' : (sec || undefined),\n` +
-  `    'aria-label': sec === 'mv_page' ? '뮤직비디오' : sec === 'links_page' ? '추천 아이템' : (sec || undefined),\n` +
-  `    onClick: () => sec === 'mv_page' ? (window.location.href = 'utubeinfo/') : sec === 'links_page' ? (window.location.href = 'links.html') : (sec && go(sec)),`;
-
-const NEW_NAV_BLOCK =
+const OLD_NAV_WITH_LINKS =
   `  }, [['gamepad-2', '게임'], ['youtube', 'mv_page'], ['shopping-bag', 'links_page'], ['clapperboard', '케이 무비'], ['music', '케이 팝'], ['users', '커뮤니티'], ['settings', null]].map(([n, sec]) => /*#__PURE__*/React.createElement("button", {\n` +
   `    key: n,\n` +
   `    title: sec === 'mv_page' ? '뮤직비디오' : sec === 'links_page' ? '추천 아이템' : (sec || undefined),\n` +
   `    'aria-label': sec === 'mv_page' ? '뮤직비디오' : sec === 'links_page' ? '추천 아이템' : (sec || undefined),\n` +
   `    onClick: () => sec === 'mv_page' ? openMv() : sec === 'links_page' ? (window.location.href = 'links.html') : (sec && go(sec)),`;
+
+const NEW_NAV_BLOCK =
+  `  }, [['gamepad-2', '게임'], ['youtube', 'mv_page'], ['clapperboard', '케이 무비'], ['music', '케이 팝'], ['users', '커뮤니티'], ['settings', null]].map(([n, sec]) => /*#__PURE__*/React.createElement("button", {\n` +
+  `    key: n,\n` +
+  `    title: sec === 'mv_page' ? '뮤직비디오' : (sec || undefined),\n` +
+  `    'aria-label': sec === 'mv_page' ? '뮤직비디오' : (sec || undefined),\n` +
+  `    onClick: () => sec === 'mv_page' ? openMv() : (sec && go(sec)),`;
 
 const OLD_MAIN_END =
   `  }, p.author, " \\xB7 ", p.meta)), /*#__PURE__*/React.createElement(__ds_scope.Icon, {\n` +
@@ -176,7 +222,7 @@ const OLD_MAIN_END =
   `}\n` +
   `Object.assign(__ds_scope, { Launcher });`;
 
-const NEW_MAIN_END =
+const PREV_MAIN_END =
   `  }, p.author, " \\xB7 ", p.meta)), /*#__PURE__*/React.createElement(__ds_scope.Icon, {\n` +
   `    name: "chevron-right",\n` +
   `    size: 18,\n` +
@@ -191,19 +237,34 @@ const NEW_MAIN_END =
   `}\n` +
   `Object.assign(__ds_scope, { Launcher });`;
 
-const OLD_HIDE_CSS =
-  `        .ilb-navlist > button:nth-child(3),\n` +
-  `        .ilb-navlist > button:nth-child(4),\n` +
-  `        .ilb-navlist > button:nth-child(5),\n` +
-  `        .ilb-navlist > button:nth-child(6) {\n` +
-  `          display: none !important;\n` +
-  `        }`;
+const NEW_MAIN_END =
+  `  }, p.author, " \\xB7 ", p.meta)), /*#__PURE__*/React.createElement(__ds_scope.Icon, {\n` +
+  `    name: "chevron-right",\n` +
+  `    size: 18,\n` +
+  `    color: "var(--text-muted)"\n` +
+  `  })))))), active === 'mv_page' ? /*#__PURE__*/React.createElement("iframe", {\n` +
+  `    className: "ilb-mv-frame",\n` +
+  `    src: "utubeinfo/?t=" + mvStamp,\n` +
+  `    title: "뮤직비디오",\n` +
+  `    allow: "autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write",\n` +
+  `    allowFullScreen: true\n` +
+  `  }) : null));\n` +
+  `}\n` +
+  `Object.assign(__ds_scope, { Launcher });`;
 
-const NEW_HIDE_CSS =
+const LEGACY_LINKS_HIDE_CSS =
   `        .ilb-navlist > button:nth-child(4),\n` +
   `        .ilb-navlist > button:nth-child(5),\n` +
   `        .ilb-navlist > button:nth-child(6),\n` +
   `        .ilb-navlist > button:nth-child(7) {\n` +
+  `          display: none !important;\n` +
+  `        }`;
+
+const CLEAN_HIDE_CSS =
+  `        .ilb-navlist > button:nth-child(3),\n` +
+  `        .ilb-navlist > button:nth-child(4),\n` +
+  `        .ilb-navlist > button:nth-child(5),\n` +
+  `        .ilb-navlist > button:nth-child(6) {\n` +
   `          display: none !important;\n` +
   `        }`;
 
@@ -260,16 +321,26 @@ function main() {
   const tplBlockInitial = extractBlock(html, 'template');
   const tplInitial = JSON.parse(tplBlockInitial.json);
 
-  const alreadyJs = launcher.includes('ilb-mv-frame') && launcher.includes('onClick: goHome');
+  const hasMvEmbed = launcher.includes('ilb-mv-frame') && launcher.includes('onClick: goHome');
+  const hasMvCacheBust =
+    launcher.includes('setMvStamp(Date.now())') &&
+    launcher.includes('src: "utubeinfo/?t=" + mvStamp');
+  const hasCleanNav =
+    launcher.includes(NEW_NAV_BLOCK) &&
+    !launcher.includes('links_page') &&
+    !launcher.includes('shopping-bag');
+  const alreadyJs = hasMvEmbed && hasMvCacheBust && hasCleanNav;
   const alreadyTplCss = tplInitial.includes(CSS_MARK);
-  const alreadyHideCss = html.includes('.ilb-navlist > button:nth-child(7)');
+  const alreadyHideCss =
+    html.includes('.ilb-navlist > button:nth-child(3)') &&
+    !html.includes('.ilb-navlist > button:nth-child(7)');
 
   if (alreadyJs && alreadyTplCss && alreadyHideCss) {
-    console.log('이미 뮤직비디오 메뉴(런처 임베드 + 일빵 홈 복귀) 패치가 적용돼 있습니다.');
+    console.log('이미 뮤직비디오 메뉴(게임 + 뮤직비디오 전용 레일 + 캐시 방지) 패치가 적용돼 있습니다.');
     return;
   }
   if (check) {
-    console.log('뮤직비디오 메뉴(런처 임베드 + 일빵 홈 복귀) 패치가 아직 적용되지 않았습니다.');
+    console.log('뮤직비디오 메뉴(게임 + 뮤직비디오 전용 레일 + 캐시 방지) 패치가 아직 적용되지 않았습니다.');
     process.exitCode = 1;
     return;
   }
@@ -277,16 +348,24 @@ function main() {
   // 1. Launcher.jsx 구간만 치환 (Draft1~5.jsx 미변경)
   let updatedLauncher = launcher;
   if (!alreadyJs) {
-    updatedLauncher = sub(updatedLauncher, 'Launcher.jsx state/go', OLD_STATE_GO, NEW_STATE_GO);
-    updatedLauncher = sub(updatedLauncher, 'Launcher.jsx root className', OLD_ROOT, NEW_ROOT);
-    updatedLauncher = sub(updatedLauncher, 'Launcher.jsx desktop logo', OLD_LOGO, NEW_LOGO);
-    updatedLauncher = sub(updatedLauncher, 'Launcher.jsx mobile logo', OLD_LOGO_M, NEW_LOGO_M);
-    if (updatedLauncher.includes(OLD_NAV_BLOCK_V1)) {
-      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx navlist (v1->v2)', OLD_NAV_BLOCK_V1, NEW_NAV_BLOCK);
-    } else {
-      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx navlist (v0->v2)', OLD_NAV_BLOCK_V0, NEW_NAV_BLOCK);
+    if (!hasMvEmbed) {
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx state/go', OLD_STATE_GO, NEW_STATE_GO);
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx root className', OLD_ROOT, NEW_ROOT);
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx desktop logo', OLD_LOGO, NEW_LOGO);
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx mobile logo', OLD_LOGO_M, NEW_LOGO_M);
+    } else if (!hasMvCacheBust) {
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx state/go (cache-bust)', PREV_STATE_GO, NEW_STATE_GO);
     }
-    updatedLauncher = sub(updatedLauncher, 'Launcher.jsx mv iframe', OLD_MAIN_END, NEW_MAIN_END);
+    if (updatedLauncher.includes(OLD_NAV_WITH_LINKS)) {
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx navlist (remove links_page)', OLD_NAV_WITH_LINKS, NEW_NAV_BLOCK);
+    } else if (!updatedLauncher.includes(NEW_NAV_BLOCK)) {
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx navlist (clean->mv)', OLD_NAV_CLEAN, NEW_NAV_BLOCK);
+    }
+    if (!hasMvEmbed) {
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx mv iframe', OLD_MAIN_END, NEW_MAIN_END);
+    } else if (!hasMvCacheBust) {
+      updatedLauncher = sub(updatedLauncher, 'Launcher.jsx mv iframe (cache-bust)', PREV_MAIN_END, NEW_MAIN_END);
+    }
 
     const updatedDs = dsFull.slice(0, lStart) + updatedLauncher + dsFull.slice(lEnd);
     entry.data = zlib.gzipSync(Buffer.from(updatedDs, 'utf8'), { level: 9 }).toString('base64');
@@ -305,11 +384,11 @@ function main() {
     html = html.slice(0, tplBlock.start) + encodedTpl + html.slice(tplBlock.end);
   }
 
-  // 3. 숨김 nth-child CSS를 3..6 -> 4..7 로 갱신 (아직 미적용인 경우)
+  // 3. 숨김 nth-child CSS를 3..6 으로 정리 (게임·뮤직비디오 2개만 표시)
   if (!alreadyHideCss) {
     const crlf = html.includes('\r\n');
-    const oldCss = crlf ? OLD_HIDE_CSS.replace(/\n/g, '\r\n') : OLD_HIDE_CSS;
-    const newCss = crlf ? NEW_HIDE_CSS.replace(/\n/g, '\r\n') : NEW_HIDE_CSS;
+    const oldCss = crlf ? LEGACY_LINKS_HIDE_CSS.replace(/\n/g, '\r\n') : LEGACY_LINKS_HIDE_CSS;
+    const newCss = crlf ? CLEAN_HIDE_CSS.replace(/\n/g, '\r\n') : CLEAN_HIDE_CSS;
     html = sub(html, 'ilb-navlist hide css', oldCss, newCss);
   }
 
@@ -317,11 +396,31 @@ function main() {
   const checkMan = JSON.parse(extractBlock(html, 'manifest').json);
   const checkDs = zlib.gunzipSync(Buffer.from(checkMan[dsId].data, 'base64')).toString('utf8');
   new Function(checkDs);
+  const checkLStart = checkDs.indexOf('// ui_kits/homepage/Launcher.jsx');
+  const checkLEnd = checkDs.indexOf('// ui_kits/homepage/LauncherTones.jsx');
+  const checkLauncher = checkDs.slice(checkLStart, checkLEnd);
+  if (checkDs.slice(0, checkLStart) !== dsFull.slice(0, lStart) || checkDs.slice(checkLEnd) !== dsFull.slice(lEnd)) {
+    throw new Error('되읽기 검증 실패: Launcher.jsx 외 구간이 변경되었습니다');
+  }
   if (checkDs.split('ilb-mv-frame').length - 1 !== 1) {
     throw new Error('되읽기 검증 실패: ilb-mv-frame 매칭 수가 1이 아닙니다');
   }
+  if (!checkLauncher.includes('src: "utubeinfo/?t=" + mvStamp') || !checkLauncher.includes('setMvStamp(Date.now())')) {
+    throw new Error('되읽기 검증 실패: utubeinfo 캐시 방지 쿼리(?t=mvStamp) 누락');
+  }
   if (checkDs.split('onClick: goHome').length - 1 !== 2) {
     throw new Error('되읽기 검증 실패: ilb-logo / ilb-logo-m goHome 연결이 2건이 아닙니다');
+  }
+  if (
+    checkLauncher.includes('links_page') ||
+    checkLauncher.includes('links.html') ||
+    checkLauncher.includes('shopping-bag') ||
+    checkLauncher.includes('추천 아이템')
+  ) {
+    throw new Error('되읽기 검증 실패: 추천 아이템 잔여 코드가 남아 있습니다');
+  }
+  if (!html.includes('.ilb-navlist > button:nth-child(3)') || html.includes('.ilb-navlist > button:nth-child(7)')) {
+    throw new Error('되읽기 검증 실패: ilb-navlist 숨김 CSS 이상');
   }
   const checkTpl = JSON.parse(extractBlock(html, 'template').json);
   if (typeof checkTpl !== 'string' || !checkTpl.includes(CSS_MARK)) {
@@ -335,7 +434,7 @@ function main() {
   const hOut = sha256(fs.readFileSync(OUT));
   if (hSrc !== hOut) throw new Error('동기화 검증 실패: 원본과 index.html 해시 불일치');
 
-  console.log('적용 완료: 런처 틀 유지 뮤직비디오(utubeinfo/) + 왼쪽 위 일빵 홈 복귀');
+  console.log('적용 완료: 런처 틀 유지 뮤직비디오(utubeinfo/) + 추천 아이템 제거 + 일빵 홈 복귀');
   console.log(`크기: ${Buffer.byteLength(html, 'utf8')} bytes`);
   console.log(`SHA-256: ${hOut}`);
 }
