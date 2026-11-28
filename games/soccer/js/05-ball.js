@@ -105,15 +105,18 @@ function updateBall(dt) {
       return;
     }
 
-    // 드리블 물리: 발에 고정하지 않고 자체 관성·잔디 마찰로 구르며 터치로 밀어낸다.
+    // 드리블 물리: 공을 선수 발 앞 가까운 리드 지점에 붙여 몰고 간다.
     applyBallMotion(dt);
     let ax = p.aimX, ay = p.aimY;
     const sp = Math.hypot(p.vx, p.vy);
-    if (Math.hypot(ax, ay) < 0.1) {
+    const am = Math.hypot(ax, ay);
+    if (am < 0.1) {
       if (sp > 10) { ax = p.vx / sp; ay = p.vy / sp; }
       else { ax = attackDir[p.side]; ay = 0; }
+    } else {
+      ax /= am; ay /= am;
     }
-    const lead = R_PLAYER + R_BALL + 3.5 + (sp / P_MAX) * 14;
+    const lead = R_PLAYER + R_BALL + 2.0 + (sp / P_MAX) * 4.5;
     const tx = p.x + ax * lead, ty = p.y + ay * lead;
     const bx = ball.x - p.x, by = ball.y - p.y;
     const bd = Math.hypot(bx, by);
@@ -125,26 +128,12 @@ function updateBall(dt) {
       ball.x = p.x + (bx / bd) * (R_PLAYER + R_BALL);
       ball.y = p.y + (by / bd) * (R_PLAYER + R_BALL);
     }
-    if (bd <= R_PLAYER + R_BALL + 18 && ball.z <= FOOT_H + 4) {
+    if (ball.z <= FOOT_H + 4) {
       const ex = tx - ball.x, ey = ty - ball.y;
-      const err = Math.hypot(ex, ey);
-      if (sp > 14) {
-        if (p.dribbleTouchCd <= 0 && (err > 3.2 || bd < R_PLAYER + R_BALL + 1.5)) {
-          const knock = 1.05 + (sp / P_MAX) * 0.18;
-          let nvx = p.vx * knock + ex * 4.4;
-          let nvy = p.vy * knock + ey * 4.4;
-          const cap = Math.max(sp * 1.38, 128);
-          const nm = Math.hypot(nvx, nvy);
-          if (nm > cap) { nvx = nvx / nm * cap; nvy = nvy / nm * cap; }
-          ball.vx = nvx; ball.vy = nvy;
-          ball.spinTop = 2.2;
-          p.dribbleTouchCd = 0.12 + (sp / P_MAX) * 0.11;
-        }
-      } else {
-        const k = 1 - Math.exp(-12 * dt);
-        ball.vx += (ex * 6.5 - ball.vx) * k;
-        ball.vy += (ey * 6.5 - ball.vy) * k;
-      }
+      const k = 1 - Math.exp(-18 * dt);
+      ball.vx += (p.vx + ex * 9.5 - ball.vx) * k;
+      ball.vy += (p.vy + ey * 9.5 - ball.vy) * k;
+      if (sp > 14) ball.spinTop = 2.0;
     }
     const crossedGoal = attackDir[p.side] === 1 ? ball.x >= FW : ball.x <= 0;
     if (crossedGoal && inGoalMouth(ball.y)) {
@@ -160,20 +149,36 @@ function updateBall(dt) {
 
 function takePossession(p) {
   if (p.trapCd > 0 || ball.freeCd > 0) return false;
-  if (ball.z > FOOT_H) return false;              // 낮은 공만 트래핑한다
+  if (ball.z > FOOT_H + 4) return false;          // 낮은 공은 즉시 발밑으로 흡수한다
   if (callOffside(p)) return true;
   if (offside) offside = null;
+  const relSp = Math.hypot(ball.vx - p.vx, ball.vy - p.vy);
   ball.owner = p; ball.lastTouch = p;
   ball.shotSide = -1; ball.shotCounted = ball.blockCounted = ball.headShot = false;
-  // 퍼스트 터치 쿠션: 즉시 0 으로 얼리지 않고 능력치에 따라 일부 관성을 남긴다.
+  if (relSp < 240) {
+    // 정지·느린 공은 닿자마자 발 앞에 바로 붙어 함께 이동한다.
+    let ax = p.aimX, ay = p.aimY;
+    const am = Math.hypot(ax, ay), sp = Math.hypot(p.vx, p.vy);
+    if (am < 0.1) {
+      if (sp > 10) { ax = p.vx / sp; ay = p.vy / sp; }
+      else { ax = attackDir[p.side]; ay = 0; }
+    } else { ax /= am; ay /= am; }
+    const lead = R_PLAYER + R_BALL + 2.0;
+    ball.x = ball.x * 0.35 + (p.x + ax * lead) * 0.65;
+    ball.y = ball.y * 0.35 + (p.y + ay * lead) * 0.65;
+    ball.vx = p.vx; ball.vy = p.vy;
+    ball.z = 0; ball.vz = 0;
+    ball.spinZ = 0; ball.spinTop = 0;
+    p.dribbleTouchCd = 0;
+    return true;
+  }
   const control = 0.52 + (p.stats.pass / 99) * 0.35;
-  const keep = (1 - control) * 0.55;
+  const keep = (1 - control) * 0.45;
   ball.vx = p.vx + (ball.vx - p.vx) * keep;
   ball.vy = p.vy + (ball.vy - p.vy) * keep;
-  ball.vz = ball.z > 2 ? Math.min(24, Math.abs(ball.vz) * 0.18) : 0;
-  ball.z = Math.min(ball.z, 3);
-  ball.spinZ *= 0.25; ball.spinTop = 0;
-  p.dribbleTouchCd = 0.08;
+  ball.vz = 0; ball.z = 0;
+  ball.spinZ *= 0.2; ball.spinTop = 0;
+  p.dribbleTouchCd = 0;
   return true;
 }
 

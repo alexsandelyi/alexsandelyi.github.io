@@ -45,16 +45,24 @@ const BOUNCE_MIN_VZ = 12;            // 이보다 느리면 튀지 않고 붙는
 // 높이 구간. 중간 구간을 비워두는 것이
 // 핵심이다 — 없으면 공중볼이 땅볼처럼 처리돼 z 를 넣은 의미가 사라진다.
 const FOOT_H = 0.5 * M;              // 10 — 트래핑·드리블·일반 킥·태클
-const CHEST_H = 1.5 * M;             // 30 — 여기까지는 몸에 튕기기만 한다
-const HEAD_H = 2.3 * M;              // 46 — 헤딩 상한
+const THIGH_H = 0.95 * M;            // 19 — 허벅지·골반 상한 (그 위 CHEST_H 까지 가슴·어깨)
+const CHEST_H = 1.5 * M;             // 30 — 몸통·어깨 상한
+const HEAD_H = 2.3 * M;              // 46 — 헤딩·머리 상한
 const GK_HIGH_H = 2.6 * M;           // 52 — 골키퍼 점프·다이빙
+const FOOT_STANCE_W = 2.2;           // 양발 좌우 보폭 반폭
+const HIP_HALF_W = 2.8, HIP_R = 5.6; // 골반·허벅지 좌우 반폭과 두께 반경
+const SHOULDER_HALF_W = 4.6, TORSO_R = 5.6; // 어깨 좌우 반폭과 몸통 반경
+const HEAD_R = 5.2;                  // 머리 구 반경
+const TACKLE_LEG_EXT = 11.5, TACKLE_LEG_R = 5.5; // 태클 시 뻗은 발 길이·반경
+// 부위별 빠른 공 임계 상대속도: 넘으면 발은 바로 앞 드롭, 몸·머리는 튕겨 나간다.
+const FAST_FOOT_V = 340, FAST_BODY_V = 290, FAST_HEAD_V = 340;
 const HEAD_CD = 0.6;                 // 연속 헤딩 드리블 차단
 const HEAD_V = 300;                  // 15m/s — 헤딩은 발킥보다 느리다
 const HEAD_ERR = 0.30;               // 조준 오차(rad). 발보다 나쁘다
 const GK_CLEAR_V = 560;              // 28m/s — 골키퍼 펀트. B_MAX 안이다
 const GK_CLEAR_DIST = 45 * M;        // 펀트 목표 낙하 거리
-// 그리기용 과장값(실측 아님). 톱다운에서 높이를 읽으려면 필요하다.
-const BALL_LIFT = 0.5;               // z 1단위당 화면 위로 0.5단위
+// 40° 사선 카메라(CAMERA_ELEVATION)의 수직 투영 비율(cos 40°)에 맞춰 선수 체형과 공 높이를 일치시킨다.
+const BALL_LIFT = Math.cos(CAMERA_ELEVATION);
 const BALL_GROW = 200, BALL_GROW_MAX = 1.8;
 const TOUCH_V = 120, PASS_V = 340, SHOOT_V = 660;
 const TRAP_R = R_PLAYER + R_BALL + 7, TRAP_V = 620;
@@ -320,4 +328,113 @@ function updateGoalNetBall(dt) {
     ball.z = CROSSBAR - R_BALL; ball.vz = -Math.abs(ball.vz) * NET_REST;
     ball.vx *= NET_DAMP; ball.vy *= NET_DAMP;
   }
+}
+
+// 2D 점 (px, py) 에서 선분 (ax, ay)-(bx, by) 까지의 최근접점과 거리
+function closestOnSeg2D(px, py, ax, ay, bx, by) {
+  const ux = bx - ax, uy = by - ay;
+  const u2 = ux * ux + uy * uy;
+  const t = u2 > 1e-6 ? Math.max(0, Math.min(1, ((px - ax) * ux + (py - ay) * uy) / u2)) : 0;
+  const cx = ax + ux * t, cy = ay + uy * t;
+  return { cx, cy, d:Math.hypot(px - cx, py - cy) };
+}
+
+// 논리 3D 공간에서 선수의 발·허벅지/골반·가슴/어깨·머리 부위별 캡슐/구 판정
+function evalFieldBodyAt(p, bx, by, bz, blockReach) {
+  if (bz < -R_BALL || bz > HEAD_H) return null;
+  const am = Math.hypot(p.aimX, p.aimY);
+  const fx = am > 0.05 ? p.aimX / am : attackDir[p.side];
+  const fy = am > 0.05 ? p.aimY / am : 0;
+  const rx = -fy, ry = fx;
+  const spFrac = Math.min(1, Math.hypot(p.vx, p.vy) / P_MAX);
+
+  const slowTrap = !ball.owner && bz <= FOOT_H + 4 && p.trapCd <= 0 && ball.freeCd <= 0 &&
+    Math.hypot(ball.vx, ball.vy) < 240 && Math.hypot(ball.vx - p.vx, ball.vy - p.vy) < FAST_FOOT_V;
+  if (bz <= FOOT_H || slowTrap) {
+    const c1 = closestOnSeg2D(bx, by,
+      p.x - rx * FOOT_STANCE_W, p.y - ry * FOOT_STANCE_W,
+      p.x + rx * FOOT_STANCE_W, p.y + ry * FOOT_STANCE_W);
+    const min1 = (slowTrap ? TRAP_R : R_PLAYER + R_BALL) + blockReach;
+    const back = spFrac * 2.0, ext = (p.tackleT > 0 ? TACKLE_LEG_EXT : 0) + spFrac * 3.0;
+    const c2 = closestOnSeg2D(bx, by,
+      p.x - fx * back, p.y - fy * back, p.x + fx * ext, p.y + fy * ext);
+    const base2 = p.tackleT > 0 ? TACKLE_LEG_R + R_BALL : (slowTrap ? TRAP_R : R_PLAYER + R_BALL);
+    const min2 = base2 + blockReach;
+    const use2 = (min2 - c2.d) > (min1 - c1.d);
+    const c = use2 ? c2 : c1, min = use2 ? min2 : min1;
+    return { part:'foot', bx, by, bz, cx:c.cx, cy:c.cy, d:c.d, min, fx, fy };
+  }
+  if (bz <= THIGH_H) {
+    const lean = spFrac * 2.2, mx = p.x + fx * lean, my = p.y + fy * lean;
+    const c = closestOnSeg2D(bx, by,
+      mx - rx * HIP_HALF_W, my - ry * HIP_HALF_W, mx + rx * HIP_HALF_W, my + ry * HIP_HALF_W);
+    return { part:'body', bx, by, bz, cx:c.cx, cy:c.cy, d:c.d, min:HIP_R + R_BALL + blockReach, fx, fy };
+  }
+  if (bz <= CHEST_H) {
+    const lean = 0.8 + spFrac * 3.2 + (p.blockT > 0 ? 2.4 : 0);
+    const mx = p.x + fx * lean, my = p.y + fy * lean;
+    const c = closestOnSeg2D(bx, by,
+      mx - rx * SHOULDER_HALF_W, my - ry * SHOULDER_HALF_W,
+      mx + rx * SHOULDER_HALF_W, my + ry * SHOULDER_HALF_W);
+    return { part:'body', bx, by, bz, cx:c.cx, cy:c.cy, d:c.d, min:TORSO_R + R_BALL + blockReach, fx, fy };
+  }
+  const lean = 1.0 + spFrac * 3.0, cx = p.x + fx * lean, cy = p.y + fy * lean;
+  const crown = bz > 42 ? (bz - 42) * 0.15 : 0;
+  return {
+    part:'head', bx, by, bz, cx, cy,
+    d:Math.hypot(bx - cx, by - cy), min:(HEAD_R - crown) + R_BALL, fx, fy
+  };
+}
+
+// 프레임 사이 이동 선분(prev -> curr)을 따라 몸 히트박스에 처음 닿는 3D 지점을 찾는다.
+function findFieldBodyHit(p, blockReach) {
+  const pz = ball.prevZ !== undefined ? ball.prevZ : ball.z;
+  const ux = ball.x - ball.prevX, uy = ball.y - ball.prevY, uz = ball.z - pz;
+  const u2xy = ux * ux + uy * uy;
+  if (!ball.owner && Math.hypot(ball.vx, ball.vy, ball.vz) > 5 &&
+      (u2xy + uz * uz) > 1e-4 && u2xy < 3600) {
+    let prevQ = 0;
+    for (let i = 0; i <= 5; i++) {
+      const q = i / 5;
+      const h = evalFieldBodyAt(p, ball.prevX + ux * q, ball.prevY + uy * q, pz + uz * q, blockReach);
+      if (h && h.d < h.min) {
+        if (i === 0) return h;
+        let lo = prevQ, hi = q, best = h;
+        for (let b = 0; b < 3; b++) {
+          const mid = (lo + hi) * 0.5;
+          const hm = evalFieldBodyAt(p, ball.prevX + ux * mid, ball.prevY + uy * mid, pz + uz * mid, blockReach);
+          if (hm && hm.d < hm.min) { best = hm; hi = mid; } else lo = mid;
+        }
+        return best;
+      }
+      prevQ = q;
+    }
+    if (u2xy > 1e-4) {
+      const q0 = Math.max(0, Math.min(1, ((p.x - ball.prevX) * ux + (p.y - ball.prevY) * uy) / u2xy));
+      const h0 = evalFieldBodyAt(p, ball.prevX + ux * q0, ball.prevY + uy * q0, pz + uz * q0, blockReach);
+      if (h0 && h0.d < h0.min) return h0;
+    }
+    return null;
+  }
+  const h = evalFieldBodyAt(p, ball.x, ball.y, ball.z, blockReach);
+  return h && h.d < h.min ? h : null;
+}
+
+// 골키퍼용 연속 3D 선분 접촉점 계산
+function ballContactPoint(p) {
+  let x = ball.x, y = ball.y, z = ball.z;
+  if (!ball.owner && Math.hypot(ball.vx, ball.vy) > 5) {
+    const ux = ball.x - ball.prevX, uy = ball.y - ball.prevY;
+    const u2 = ux * ux + uy * uy;
+    if (u2 > 1e-4 && u2 < 3600) {
+      const q = Math.max(0, Math.min(1,
+        ((p.x - ball.prevX) * ux + (p.y - ball.prevY) * uy) / u2));
+      const px = ball.prevX + ux * q, py = ball.prevY + uy * q;
+      if (Math.hypot(px - p.x, py - p.y) < Math.hypot(x - p.x, y - p.y)) {
+        const pz = ball.prevZ !== undefined ? ball.prevZ : ball.z;
+        x = px; y = py; z = pz + (ball.z - pz) * q;
+      }
+    }
+  }
+  return { x, y, z };
 }

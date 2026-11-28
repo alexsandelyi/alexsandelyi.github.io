@@ -257,7 +257,7 @@ function showTitle() {
   state = 'title';
   solo = false; soloPlayer = null;      // 연습 모드는 제목 화면으로 나오면 꺼진다
   const ov = document.getElementById('overlay');
-  ov.querySelector('h1').textContent = '동네 축구';
+  ov.querySelector('h1').textContent = '동네 축구 v1';
   document.getElementById('howto').innerHTML = HOWTO;
   document.getElementById('btn1p').textContent = 'AI와 대전';
   document.getElementById('btnHome').hidden = true;

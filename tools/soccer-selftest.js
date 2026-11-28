@@ -455,6 +455,15 @@ const SELF_TEST = `
       var ot = teams[0][9]; ctrl[0] = ot; ot.x = 900; ot.y = 680; ot.kickCd = 0;
       launch(0, 0, -80); ball.x = ball.prevX = 950; ball.y = ball.prevY = 680; act(0, 'pass', 0.5);
       var oneTouchBuffered = ot.actPass > 0;
+      startMatch('1p');
+      var bp = teams[0][9]; bp.x = FW - 300; bp.y = 680; bp.vx = bp.vy = 0; bp.aimX = 1; bp.aimY = 0;
+      launch(25, 0, -600); ball.x = ball.prevX = bp.x + 2; ball.y = ball.prevY = bp.y + 10.5; collide(bp);
+      var shoulderBounce = !ball.owner && ball.lastTouch === bp && Math.hypot(ball.vx, ball.vy) > 120;
+      bp.trapCd = bp.headCd = 0; matchStats.shots[0] = 0;
+      launch(38, 0, -600); ball.x = ball.prevX = bp.x + 5; ball.y = ball.prevY = bp.y; collide(bp);
+      var fastHeadBounces = !ball.owner && matchStats.shots[0] === 0 && ball.vx > 120;
+      bp.trapCd = bp.headCd = 0; launch(0, 0, -600); ball.x = ball.prevX = bp.x + 6; ball.y = ball.prevY = bp.y; collide(bp);
+      var fastFootDrops = !ball.owner && Math.hypot(ball.vx, ball.vy) < 60 && Math.hypot(ball.x - bp.x, ball.y - bp.y) < 16;
 
       return {
         strictMode:this.strictMode,
@@ -483,7 +492,8 @@ const SELF_TEST = `
         actionDirectionSlotsValid:actionDirectionSlotsValid, magnusCurves:magnusCurves,
         topspinDips:topspinDips, postRebounds:postRebounds, crossbarRebounds:crossbarRebounds,
         dribbleNotGlued:dribbleNotGlued, gkCatches:gkCatches, gkParries:gkParries,
-        landingMatchesDrag:landingMatchesDrag, oneTouchBuffered:oneTouchBuffered
+        landingMatchesDrag:landingMatchesDrag, oneTouchBuffered:oneTouchBuffered,
+        shoulderBounce:shoulderBounce, fastHeadBounces:fastHeadBounces, fastFootDrops:fastFootDrops
       };
 `;
 

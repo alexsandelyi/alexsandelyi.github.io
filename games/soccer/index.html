@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>동네 축구 11v11 — 일빵</title>
+<title>동네 축구 v1 — 일빵</title>
 <style>
   :root {
     --bg-canvas:#12281A; --bg-surface:#193723; --bg-raised:#224A30;
@@ -37,6 +37,7 @@
   .team.away { color:var(--gold); }
   .score { font-size:22px; font-weight:700; color:var(--text-strong);
            font-variant-numeric:tabular-nums; letter-spacing:1px; white-space:nowrap; flex:0 0 auto; }
+  .ver { flex:0 0 auto; font-size:11.5px; font-weight:700; color:var(--gold); opacity:.9; }
   .clock { flex:0 0 auto; font-size:13.5px; color:var(--text-strong);
            font-variant-numeric:tabular-nums; min-width:60px; text-align:right; white-space:nowrap; }
   @media (max-width: 520px) {
@@ -131,6 +132,7 @@
 
 <header>
   <a class="back" href="../../">← 목록</a>
+  <span class="ver">v1</span>
   <div class="scoreboard">
     <span class="team home" id="nameHome">우리</span>
     <span class="score"><span id="sHome">0</span> : <span id="sAway">0</span></span>
@@ -150,7 +152,7 @@
   </div>
 
   <div id="overlay">
-    <h1>동네 축구</h1>
+    <h1>동네 축구 v1</h1>
     <p id="howto"></p>
     <div class="btnrow" id="levelRow">
       <button class="lvl ghost" data-lvl="0">쉬움</button>
@@ -201,17 +203,17 @@
 
 <!-- 코드는 js/ 로 나눠져 있다. 클래식 <script> 라 전역 스코프를 공유하므로
      로드 순서가 곧 의존 순서다. 순서를 바꾸면 const 가 TDZ 로 터진다. -->
-<script src="js/01-core.js?v=ef7054d9"></script>
-<script src="js/02-teams.js?v=ef7054d9"></script>
-<script src="js/03-competition.js?v=ef7054d9"></script>
-<script src="js/04-physics.js?v=ef7054d9"></script>
-<script src="js/05-ball.js?v=ef7054d9"></script>
-<script src="js/06-contact.js?v=ef7054d9"></script>
-<script src="js/07-ai.js?v=ef7054d9"></script>
-<script src="js/08-loop.js?v=ef7054d9"></script>
-<script src="js/09-sprites.js?v=ef7054d9"></script>
-<script src="js/10-draw.js?v=ef7054d9"></script>
-<script src="js/11-hud.js?v=ef7054d9"></script>
-<script src="js/12-practice.js?v=ef7054d9"></script>
+<script src="js/01-core.js?v=5d150431"></script>
+<script src="js/02-teams.js?v=5d150431"></script>
+<script src="js/03-competition.js?v=5d150431"></script>
+<script src="js/04-physics.js?v=5d150431"></script>
+<script src="js/05-ball.js?v=5d150431"></script>
+<script src="js/06-contact.js?v=5d150431"></script>
+<script src="js/07-ai.js?v=5d150431"></script>
+<script src="js/08-loop.js?v=5d150431"></script>
+<script src="js/09-sprites.js?v=5d150431"></script>
+<script src="js/10-draw.js?v=5d150431"></script>
+<script src="js/11-hud.js?v=5d150431"></script>
+<script src="js/12-practice.js?v=5d150431"></script>
 </body>
 </html>
