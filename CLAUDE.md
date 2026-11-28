@@ -60,23 +60,22 @@ DNS 는 도메인 등록처에 걸어야 한다 (GitHub Pages 사용자 사이�
 |---|---|
 | `index.html` | **생성 산출물**. 직접 편집하지 않는다 (아래 참조) |
 | `일빵-런처-확정안.html` | 작업 원본. git 추적 제외 |
-| `assets/clickable-v2/` (8개), `assets/lettering-v1/` (3개) | `index.html` 이 상대경로로 참조 — 함께 배포해야 한다 |
-| `assets/clickable-v1/` | 미참조 구버전. gitignore |
+| `assets/clickable-v2/` (2개: `game.webp`, `play.webp`) | `index.html` 이 상대경로로 참조 — 함께 배포해야 한다 |
+| `assets/gameplay/soccer.webp`, `assets/texture/hanji.webp` | `index.html` 이 참조하는 축구 카드·한지 배경 WebP |
 | `app-ads.txt` | AdMob 인증. **도메인 루트에 있어야 하므로 지우면 안 된다.** 도메인을 바꾸면 AdMob 콘솔의 개발자 사이트 주소도 함께 바꿔야 인증이 유지된다 |
 | `CNAME` | 커스텀 도메인 `ilbbang.com`. **지우면 도메인이 조용히 풀린다** |
+| `games/match3/` | 과일 친구 매치 3 게임 |
 | `games/soccer/` | 동네 축구 11v11. 의존성 없는 Canvas 2D |
-| `community/` | 커뮤니티 게시판. 번들 밖 독립 페이지. 아래 「커뮤니티 게시판」 참조 |
-| `worker/` | Cloudflare Worker (게시판 API). **Pages 가 서빙하지 않는다.** 비밀값은 저장소에 넣지 않는다 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 로 순서대로 로드. 파일당 500줄 이하 |
 | `games/soccer/assets/players.png` | 선수 스프라이트 시트 17장. `tools/sprite-gen.py` 산출물 — 손으로 고치지 않는다 |
 | `tools/sprite-src/` | 손으로 그린 원본 일러스트. 이게 진짜 원본이다 (내려받기 폴더가 아니라) |
 | `games/soccer/CLAUDE.md` | 축구 작업 지침. **밸런스 기준선 수치와 스프라이트 실패 기록이 여기에만 있다** — 지우면 복원 불가 |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
-| `tools/patches/` | 번들 재적용 패치 7개. **번들이 재생성되면 여기서 복구한다** |
+| `tools/patches/` | 번들 재적용 패치(`patch-slim.js`, `patch-musicvideo.js`, `patch-game-stack.js` 등). **번들이 재생성되면 여기서 복구한다** |
 | `tmp/` | 번들 추출물·스크린샷 등 버려도 되는 작업물. gitignore |
 | `.nojekyll` | Jekyll 우회. 이게 없을 때 Pages 빌드가 실패한 이력이 있다 |
 
-`index.html` 은 자립형이 **아니다**. 폰트·JS 는 파일 안에 박혀 있지만 위 이미지 11개는 외부 참조다.
+`index.html` 은 자립형이 **아니다**. React·디자인 시스템 JS 는 파일 안에 박혀 있지만 위 이미지 자산은 외부 참조다.
 
 ## index.html 을 고칠 때
 
@@ -89,11 +88,7 @@ cp 일빵-런처-확정안.html index.html
 **원본은 외부 도구가 재생성한다.** 2026-07-30 작업 중에만 두 번 통째로 바뀌었다(한 번은 웹폰트 278개가 시스템 폰트로 교체됨). 그래서:
 
 - 손으로 쓴 코드를 번들 안에 넣으면 다음 재생성 때 사라진다. 새 기능은 `games/` 처럼 번들 밖에 독립 파일로 둔다.
-- 번들을 고쳐야 하면 `tools/patches/patch-*.js` 스크립트로 만들어 재적용 가능하게 한다. **재생성 후에는 순서대로 다시 돌린다** — `patch-hanji.js`(테마) → `patch-hero.js`(히어로 정리) → `patch-community.js`(커뮤니티 링크). 뒤 것이 앞 것의 클래스에 기대므로 순서가 중요하고, 이 셋은 `--check` 로 적용 여부를 알려준다.
-
-  ```bash
-  for p in hanji hero community; do node tools/patches/patch-$p.js; done
-  ```
+- 번들을 고쳐야 하면 `tools/patches/patch-*.js` 스크립트로 만들어 재적용 가능하게 한다. **재생성 후에는 순서대로 다시 돌린다** — `patch-hanji.js`(테마) → `patch-musicvideo.js`(뮤직비디오) → `patch-game-stack.js`(게임 2단) → `patch-slim.js`(미사용 섹션·Babel 제거). 주요 패치는 `--check` 로 적용 여부를 알려준다.
 
   `patch-fonts` `patch-gamelink` `patch-responsive` `patch-splash` 는 2026-07-30 에 한 번 적용해 지금 원본에 이미 들어 있다. 재생성으로 되돌아갔을 때를 위해 남겨둔 것이고 `--check` 가 없다 — 이미 적용된 상태에서 돌리면 `매칭 0건` 으로 멈춘다(파일은 안 고친다). **`patch-fonts` 만은 예외로 조건 없이 다시 쓴다** — 내용은 같지만 mtime 이 바뀐다.
 
@@ -102,7 +97,7 @@ cp 일빵-런처-확정안.html index.html
 
 ### 번들 구조와 함정
 
-`index.html` 은 자체 압축 해제 번들이다. `<script type="__bundler/manifest">` 에 자산이 base64(일부 gzip), `<script type="__bundler/template">` 에 실제 페이지가 JSON 으로 들어 있다.
+`index.html` 은 자체 압축 해제 번들이다. `<script type="__bundler/manifest">` 에 자산이 base64(일부 gzip), `<script type="__bundler/template">` 에 실제 페이지가 JSON 으로 들어 있다 (Babel 번들은 `patch-slim.js` 로 제거되어 일반 `<script>` 로 마운트한다).
 
 다시 포장할 때 두 가지를 반드시 지킨다.
 
@@ -117,53 +112,7 @@ cp 일빵-런처-확정안.html index.html
 
 넓은 화면에서는 읽는 영역만 **1760px** 로 묶고 배경·레일·탭바는 창을 채운다. 안 묶으면 히어로가 16/9 로 계속 늘어난다(1920 에서 748px). 상한은 2026-08-05 에 1440 → 1760 으로 올렸다 — 1440 에서는 1920 화면의 좌우 여백이 194px 씩 남아 허전했다. 아주 없애지는 않는다: 미디어 높이가 440px 로 묶여 있어 초광폭에서 2.7:1 로 납작해진다.
 
-폰트는 시스템 한글 폰트를 쓴다(Apple SD Gothic Neo / 맑은 고딕).
-
-## 커뮤니티 게시판 (`community/` + `worker/`)
-
-**아직 배포 전이다** (2026-08-13). 프런트와 Worker 코드는 돌지만 `api.ilbbang.com` 연결과 CORS 확인이 남았고, 수정·신고는 API 만 있고 화면이 없다. `js/01-api.js` 의 `API_BASE` 가 비어 있으면 **localStorage 가짜 저장소**로 도는데 지금이 그 상태다. 응답 모양이 진짜와 같아서 나중에 주소 한 줄만 넣으면 갈린다.
-
-로그인이 없다. 글 쓸 때 받는 비밀번호가 본인이 자기 글을 지우는 유일한 수단이다.
-
-### apex 에 Cloudflare 프록시를 켜지 않는다
-
-| 이름 | 가리키는 곳 | 프록시 |
-|---|---|---|
-| `ilbbang.com`, `www` | GitHub Pages | **끔** (지금 그대로) |
-| `api.ilbbang.com` | Worker | **켬** (Worker 는 프록시가 필요) |
-
-`ilbbang.com/api/*` 로 Worker 경로를 잡으면 apex 에 프록시를 켜야 하고, 그러면 GitHub Pages 인증서 갱신(90일마다 HTTP 검증)이 위험해진다. **잘 도는 것을 흔들지 않는다.** 대신 출처가 달라지므로 Worker 가 `Access-Control-Allow-Origin: https://ilbbang.com` 을 붙인다.
-
-### 비밀번호 해시를 「고치지」 않는다
-
-SHA-256 + 글마다 다른 소금값 + 서버 후추값이다. bcrypt 나 반복 많은 PBKDF2 로 바꾸면 **Workers 무료 플랜의 호출당 CPU 10ms 한도**를 넘겨 터진다. 계정 비밀번호가 아니라 글 하나를 지우는 코드라서 받아들인 선택이고, 그래서 화면에 **「쓰던 비밀번호를 넣지 마세요」**를 반드시 띄운다. 재사용하면 이 약한 해시가 남의 계정 위험이 된다.
-
-관리자 비밀번호, Turnstile 비밀키, IP 소금값은 `wrangler secret put` 으로 Cloudflare 에 둔다. **저장소가 Public 이라 코드에는 이름만 남긴다.** 원문 IP 도 저장하지 않는다 — 소금과 함께 해시해 속도 제한에만 쓴다.
-
-### Turnstile 은 두 값을 같이 켜고 같이 끈다
-
-| 값 | 두는 곳 | 성격 |
-|---|---|---|
-| `TURNSTILE_SITE_KEY` (`community/js/01-api.js`) | 저장소 | 공개값. 브라우저로 나간다 |
-| `TURNSTILE_SECRET` | `wrangler secret put` | 비밀 |
-
-둘 다 비면 검사를 건너뛰는 로컬 개발이고, 둘 다 차면 운영이다. **비밀키만 넣으면 글쓰기가 100% 403 으로 막힌다** — Worker 는 토큰을 요구하는데 화면에 위젯이 없으면 토큰이 만들어지지 않는다. 2026-08-14 까지 실제로 이 상태였다(프런트에 위젯 자체가 없었고, 시험도 비밀키 없는 경로만 돌아 잡히지 않았다). 반대로 사이트 키만 넣으면 위젯은 떠도 아무것도 검증하지 않는다.
-
-위젯 스크립트는 글쓰기 창을 **처음 열 때** 받는다 — 읽기만 하는 사람에게 외부 스크립트를 물리지 않는다. 토큰은 한 번 쓰면 소모되므로 창을 열 때와 올리기가 실패했을 때 `reset()` 한다.
-
-키 없이도 로컬 검증이 된다. Cloudflare 공개 시험 키 `1x00000000000000000000AA`(항상 통과)를 잠깐 넣으면 위젯·토큰 흐름을 그대로 볼 수 있다. 다만 이 키는 늘 같은 더미 토큰(`XXXX.DUMMY.TOKEN.XXXX`)을 주므로 **토큰이 매번 새로 나오는지는 이 방법으로 확인할 수 없다.**
-
-### 사용자 글은 `textContent` 로만 넣는다
-
-`innerHTML` 에 넣지 않는다. 줄바꿈은 `<br>` 치환이 아니라 `white-space: pre-wrap` 으로 살린다 — 바꾸는 순간 XSS 가 열린다.
-
-### 검증은 배포 없이 돈다
-
-```bash
-node worker/test.mjs   # 52항목. D1 대신 node:sqlite, 핸들러는 배포될 코드 그대로
-```
-
-런처 안에서도 같은 부품(`02-board.js`)이 돈다. 번들에는 `<script src>` 네 줄만 넣고(`tools/patches/patch-community.js`) 로직은 전부 번들 밖에 둔다. React 가 섹션을 다시 그리면 우리 것이 지워지므로 `embed.js` 가 `MutationObserver` 로 다시 붙인다. 런처에서는 주소에 `?page=` 를 쓰지 않는다 — 게시판이 런처의 주소를 바꾸면 안 된다.
+본문·제목은 Google Fonts(`Noto Sans KR`, `Gowun Dodum`)와 시스템 한글 폰트(Apple SD Gothic Neo / 맑은 고딕) 폴백을 쓴다.
 
 ## 게임 (`games/soccer/`)
 

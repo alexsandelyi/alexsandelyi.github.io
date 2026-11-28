@@ -44,18 +44,19 @@
 |---|---|
 | `일빵-런처-확정안.html` | 로컬 작업 원본. Git 추적 제외 |
 | `index.html` | 배포 산출물. 원본과 바이트 단위로 같아야 함 |
-| `assets/clickable-v2/` | 현재 사용하는 클릭 글자 WebP 8개 |
-| `assets/lettering-v1/` | 현재 사용하는 제목 글자 WebP 3개 |
-| `assets/clickable-v1/` | 미참조 구버전. 배포 대상이 아님 |
+| `assets/clickable-v2/` | 현재 사용하는 클릭 글자 WebP 2개 (`game.webp`, `play.webp`) |
+| `assets/gameplay/soccer.webp` | 동네 축구 런처 카드 배경 이미지 |
+| `assets/texture/hanji.webp` | 런처 한지 지면 텍스처 |
 | `app-ads.txt` | AdMob 인증 파일. 루트 위치를 유지하며 삭제 금지. 도메인 변경 시 AdMob 콘솔의 개발자 사이트 주소도 함께 변경 |
 | `CNAME` | 커스텀 도메인 `ilbbang.com`. 삭제하면 도메인이 해제된다 |
+| `games/match3/` | 과일 친구 매치 3 게임 (WebP 자산 포함) |
 | `games/soccer/` | 의존성 없는 Canvas 2D 축구 게임 |
 | `games/soccer/js/` | 게임 코드 12개. 클래식 `<script src>` 순서 로드. 파일당 500줄 이하 |
 | `games/soccer/assets/players.png` | 선수 스프라이트 시트 271칸(기존 포즈 15칸 + 이동 8방향×2프레임 + 액션 10종×8방향×3프레임). `tools/sprite-gen.py` 산출물. 손으로 고치지 않음 |
 | `tools/sprite-src/` | 원본 일러스트와 방향·액션 프레임 소스. 저장소 밖 원본에 의존하지 않는다 |
 | `games/soccer/CLAUDE.md` | 축구 작업 지침. **밸런스 기준선 수치와 스프라이트 실패 기록이 여기에만 있다** — 지우면 복원 불가 |
 | `tools/` | 개발 도구. `soccer-sim.js` = 밸런스 측정, `sprite-gen.py` = 스프라이트 생성. 사이트 동작과 무관 |
-| `tools/patches/` | 번들 재적용 패치 7개. 번들이 재생성되면 여기서 복구한다 |
+| `tools/patches/` | 번들 재적용 패치(`patch-slim.js`, `patch-musicvideo.js`, `patch-game-stack.js` 등). 번들이 재생성되면 여기서 복구한다 |
 | `tmp/` | 번들 추출물·스크린샷 등 버려도 되는 작업물. Git 추적 제외 |
 | `.nojekyll` | GitHub Pages에 필요. 삭제 금지 |
 
@@ -99,11 +100,13 @@ Copy-Item -LiteralPath '.\일빵-런처-확정안.html' -Destination '.\index.ht
 ## 이미지와 글꼴
 
 - `index.html`은 이미지까지 완전히 자립형인 파일이 아니다.
-- `assets/clickable-v2/`와 `assets/lettering-v1/`의 WebP 11개를
-  `index.html`과 함께 배포한다.
+- `assets/clickable-v2/`의 WebP 2개(`game.webp`, `play.webp`)와
+  `assets/gameplay/soccer.webp`, `assets/texture/hanji.webp`,
+  `games/match3/menu/start_bg_match3.webp`를 `index.html`과 함께 배포한다.
 - 이미지 글자는 실제 텍스트 폰트가 아니라 이미지 생성 자산이다.
   클릭 대상의 접근 가능한 이름과 키보드 동작은 계속 유지한다.
-- 사이트의 실제 텍스트는 다음 시스템 글꼴 스택을 사용한다.
+- 본문·제목은 Google Fonts(`Noto Sans KR`, `Gowun Dodum`)와 다음 시스템
+  글꼴 폴백 스택을 사용한다.
 
 ```css
 font-family:
@@ -113,8 +116,8 @@ font-family:
   sans-serif;
 ```
 
-- 사용자가 명시적으로 요청하지 않는 한 웹폰트 파일을 다시 번들에 포함하지
-  않는다.
+- 사용자가 명시적으로 요청하지 않는 한 미사용 웹폰트나 추가 폰트 파일을
+  번들에 포함하지 않는다.
 - 새 글꼴을 포함해야 한다면 상업적 웹 사용과 재배포 조건을 확인하고
   필요한 라이선스 고지를 함께 추가한다.
 - 검증용 JPEG, 단계별 백업 HTML과 미참조 구버전 자산은 배포에 포함하지 않는다.
@@ -131,37 +134,6 @@ font-family:
 - 배경, 레일과 탭바는 전체 창을 채우게 유지한다.
 - 히어로가 16:9 비율로 무제한 커져 1920px 화면에서 과도하게 높아지지
   않도록 확인한다.
-
-## 커뮤니티 게시판 규칙
-
-- `community/`(정적 프런트)와 `worker/`(Cloudflare Worker)로 나뉜다.
-  **Pages 는 `worker/` 를 서빙하지 않는다.**
-- **아직 배포 전이다** (2026-08-13). `api.ilbbang.com` 연결과 CORS 확인이
-  남았고, 수정·신고는 API 만 있고 화면이 없다.
-- `js/01-api.js` 의 `API_BASE` 가 비어 있으면 localStorage 가짜 저장소로
-  돈다. 지금이 그 상태다.
-- **apex(`ilbbang.com`)에 Cloudflare 프록시를 켜지 않는다.** GitHub Pages
-  인증서 갱신(90일마다 HTTP 검증)이 위험해진다. Worker 는
-  `api.ilbbang.com` 서브도메인에 프록시를 켜서 붙이고 CORS 로 연결한다.
-- 글 비밀번호 해시를 bcrypt 나 반복 PBKDF2 로 바꾸지 않는다. Workers 무료
-  플랜의 호출당 CPU 10ms 한도를 넘긴다. SHA-256 + 소금 + 서버 후추를
-  유지하고, 화면에 「쓰던 비밀번호를 넣지 마세요」를 띄운다.
-- 관리자 비밀번호, Turnstile 비밀키, IP 소금값은 `wrangler secret put` 으로
-  둔다. 저장소가 Public 이므로 코드에는 이름만 남긴다.
-- **Turnstile 은 두 값을 같이 켜고 같이 끈다.** 공개값
-  `TURNSTILE_SITE_KEY`(`community/js/01-api.js`)와 비밀값
-  `TURNSTILE_SECRET`(`wrangler secret put`)이 짝이다. 둘 다 비면 검사를
-  건너뛰는 로컬 개발, 둘 다 차면 운영이다. **비밀키만 넣으면 화면에 위젯이
-  없어 토큰이 안 만들어지고 글쓰기가 100% 403 으로 막힌다** (2026-08-14
-  까지 실제로 이 상태였다). 사이트 키만 넣으면 위젯만 뜨고 검증은 안 된다.
-- 위젯 스크립트는 글쓰기 창을 처음 열 때만 받는다. 토큰은 한 번 쓰면
-  소모되므로 창을 열 때와 올리기 실패 시 `reset()` 한다.
-- 로컬에서 위젯을 보려면 Cloudflare 공개 시험 키
-  `1x00000000000000000000AA`(항상 통과)를 잠깐 넣는다. 이 키는 늘 같은 더미
-  토큰을 주므로 토큰이 매번 새로 나오는지는 이 방법으로 확인할 수 없다.
-- 사용자 글을 `innerHTML` 에 넣지 않는다. `textContent` 만 쓰고 줄바꿈은
-  `white-space: pre-wrap` 으로 살린다.
-- 배포 없이 `node worker/test.mjs` 52항목으로 검증한다.
 
 ## 축구 게임 규칙
 
@@ -207,7 +179,7 @@ python -m http.server 8899
 
 - 검증이 끝나면 시작한 로컬 서버 프로세스를 종료한다.
 - 데스크톱, 태블릿과 모바일 크기에서 레이아웃을 확인한다.
-- 이미지 글자 자산 11개의 로딩 실패가 없는지 확인한다.
+- 사용 중인 이미지 자산(`assets/clickable-v2/game.webp`, `play.webp`, `assets/gameplay/soccer.webp`, `assets/texture/hanji.webp`, `games/match3/menu/start_bg_match3.webp`)의 로딩 실패가 없는지 확인한다.
 - 게임 자동 검증은 백그라운드 `requestAnimationFrame`에 의존하지 말고
   `step(1/60)`을 직접 반복한다.
 - 배포 후에는 라이브 URL의 `/`, `/app-ads.txt`,
